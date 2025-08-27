@@ -80,7 +80,7 @@ df.rename(columns={
     "Preseason Rank": "Pre. Rk.",
     "Current Rank": "Rk.",
     "Team Logo": "Team",
-    "Conference Logo": "Conference",
+    "Conference Logo": "Conf.",
     "Power Rating": "Pwr. Rtg.",
     "Offensive Rating": "Off. Rtg.",
     "Defensive Rating": "Def. Rtg.",
@@ -92,7 +92,7 @@ df.rename(columns={
 }, inplace=True)
 
 # --- Reorder cleanly ---
-first_cols = ["Pre. Rk.", "Rk.", "Team", "Conference"]
+first_cols = ["Pre. Rk.", "Rk.", "Team", "Conf."]
 existing = [c for c in df.columns if c not in first_cols]
 ordered = [c for c in first_cols if c in df.columns] + existing
 df = df[ordered]
