@@ -120,7 +120,7 @@ with st.sidebar:
     # Choose sort column (include text helpers for better UX)
     sortable_cols = [c for c in df.columns if c not in ['Team', 'Conf']] + ['Team Name', 'Conf Name']
     primary_sort = st.selectbox("Sort by", options=sortable_cols, index=sortable_cols.index('Rk') if 'Rk' in sortable_cols else 0)
-    sort_ascending = st.checkbox("Ascending", value=False)
+    sort_ascending = st.checkbox("Ascending", value=True)
 
 # Start from the working view
 view = df.copy()
