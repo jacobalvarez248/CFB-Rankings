@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import urllib.parse
 from matplotlib.colors import LinearSegmentedColormap
 
 # ---------------------------------
@@ -49,9 +48,12 @@ df = df.merge(logos_df[['Team', 'Image URL']], on='Team', how='left')
 if 'Current Rank' in df.columns:
     df['Current Rank'] = df['Current Rank'].astype('Int64')
 
-# Preserve a plain team name and set as index
+# Save team name for index and set it NOW (before any subsetting later)
 df['Team Name'] = df['Team']
 df.set_index('Team Name', inplace=True)
+
+# Build team logo HTML
+df['Team Logo'] = df['Image URL'].apply(lambda u: f'<img src="{u}" width="15">' if pd.notna(u) else '')
 
 # Build conference logos from the same Logos sheet (expects rows like "SEC", "Big Ten", etc.)
 conf_logo_map = logos_df.set_index('Team')['Image URL'].to_dict()
@@ -74,12 +76,11 @@ df.drop(columns=[
     "Team",                      # drop team text, keep only logo
     "Image URL",                 # raw logo URL not needed
     "Vegas Win Total",
-    # (If your workbook contains these, you can keep them by removing from this list)
     "Projected Overall Wins",
     "Projected Overall Losses",
     "Projected Conference Wins",
     "Projected Conference Losses",
-    "Schedule Difficulty Rank",
+    "Schedule Difficulty Rank",  # spelling-safe, drops if present
     "Column1", "Column3", "Column5"
 ], errors='ignore', inplace=True)
 
@@ -87,28 +88,15 @@ df.drop(columns=[
 df.rename(columns={
     "Preseason Rank": "Pre Rk",
     "Current Rank": "Rk",
+    "Team Logo": "Team",
     "Conference Logo": "Conf",
     "Power Rating": "Pwr Rtg",
     "Offensive Rating": "Off Rtg",
     "Defensive Rating": "Def Rtg",
     "Current Wins": "W",
     "Current Losses": "L",
-    # If you kept the projections above, these will apply:
-    "Projected Overall Wins": "Proj W",
-    "Projected Conference Wins": "Proj Conf W",
     "Schedule Difficulty": "Sched Diff"
 }, inplace=True)
-
-# --- Make team logos clickable (link passes ?team=<name> and scrolls to #teamdash) ---
-def mk_team_logo(url, team_name):
-    if pd.notna(url):
-        return f'<a href="?tab=team&team={urllib.parse.quote(str(team_name))}"><img src="{url}" width="15"></a>'
-    return ''
-# Use the index (Team Name) for display name in href
-df['Team'] = [mk_team_logo(u, name) for u, name in zip(
-    logos_df.set_index('Team').reindex(df.index)['Image URL'].fillna(''),
-    df.index
-)]
 
 # --- Reorder cleanly ---
 first_cols = ["Pre Rk", "Rk", "Team", "Conf"]
@@ -117,52 +105,22 @@ ordered = [c for c in first_cols if c in df.columns] + existing
 df = df[ordered]
 
 # ---------------------------------
-# Query params
-# ---------------------------------
-selected_team = None
-target_tab = None
-try:
-    qp = st.query_params
-    # team (normalize to str or None)
-    selected_team = qp.get("team", [None])
-    if isinstance(selected_team, list):
-        selected_team = selected_team[0] if selected_team else None
-    # tab hint (e.g., 'team')
-    target_tab = qp.get("tab", [None])
-    if isinstance(target_tab, list):
-        target_tab = target_tab[0] if target_tab else None
-except Exception:
-    qp = st.experimental_get_query_params()
-    selected_team = qp.get("team", [None])[0] if qp.get("team") else None
-    target_tab = qp.get("tab", [None])[0] if qp.get("tab") else None
-
-# ---------------------------------
-# Sidebar controls (filters + sorting + team dashboard picker)
+# Sidebar controls (filters + sorting)
 # ---------------------------------
 with st.sidebar:
     st.header("Filters & Sort")
 
-    # Team substring search (uses the index 'Team Name')
+    # Team substring search (uses the index, which you set to 'Team Name')
     team_query = st.text_input("Team contains", value="")
 
-    # Conference multiselect
+    # Conference multiselect (based on the preserved text column)
     conf_options = sorted([c for c in df['Conf Name'].dropna().unique()])
     conf_selected = st.multiselect("Conference", conf_options)
 
     # Choose sort column (include text helpers for better UX)
     sortable_cols = [c for c in df.columns if c not in ['Team', 'Conf']] + ['Team Name', 'Conf Name']
-    default_sort_idx = sortable_cols.index('Rk') if 'Rk' in sortable_cols else 0
-    primary_sort = st.selectbox("Sort by", options=sortable_cols, index=default_sort_idx)
+    primary_sort = st.selectbox("Sort by", options=sortable_cols, index=sortable_cols.index('Rk') if 'Rk' in sortable_cols else 0)
     sort_ascending = st.checkbox("Ascending", value=True)
-
-    st.divider()
-    st.subheader("Team Dashboards")
-    team_list = sorted(df.index.unique().tolist())
-    selected_team = st.selectbox(
-        "Select team",
-        options=team_list,
-        index=(team_list.index(selected_team) if selected_team in team_list else 0)
-    )
 
 # Start from the working view
 view = df.copy()
@@ -175,7 +133,7 @@ if team_query:
 if conf_selected:
     view = view[view['Conf Name'].isin(conf_selected)]
 
-# Sorting: helper columns that aren't displayed (Team Name / Conf Name) still work
+# Sorting: if user chose helper columns that aren't displayed (Team Name / Conf Name), they still work
 if primary_sort in view.columns:
     view = view.sort_values(by=primary_sort, ascending=sort_ascending, kind="mergesort")
 elif primary_sort == 'Team Name':
@@ -183,7 +141,7 @@ elif primary_sort == 'Team Name':
 elif primary_sort == 'Conf Name':
     view = view.sort_values(by='Conf Name', ascending=sort_ascending, kind="mergesort")
 
-# We don't want to display helper columns
+# We don't want to *display* helper columns; keep your original visible ordering
 visible_cols = [c for c in view.columns if c != 'Conf Name']
 view = view[visible_cols]
 
@@ -191,6 +149,7 @@ view = view[visible_cols]
 # Styling (with gradients) + number formats
 # ---------------------------------
 numeric_cols = [c for c in view.columns if pd.api.types.is_numeric_dtype(view[c])]
+
 # Base formatting: 1 decimal for most numerics
 fmt = {c: '{:.1f}' for c in numeric_cols}
 # Whole numbers for these
@@ -204,12 +163,13 @@ styled = view.style.format(fmt).hide(axis='index')
 # Colormaps
 dark_navy = '#002060'
 dark_green = '#006400'
-dark_gold  = '#b8860b'
+dark_gold = '#b8860b'
 
-cmap_blue   = LinearSegmentedColormap.from_list('white_to_darknavy', ['#ffffff', dark_navy])
+from matplotlib.colors import LinearSegmentedColormap
+cmap_blue = LinearSegmentedColormap.from_list('white_to_darknavy', ['#ffffff', dark_navy])
 cmap_blue_r = cmap_blue.reversed()
-cmap_green  = LinearSegmentedColormap.from_list('white_to_darkgreen', ['#ffffff', dark_green])
-cmap_gold   = LinearSegmentedColormap.from_list('darkgold_to_white', [dark_gold, '#ffffff'])
+cmap_green = LinearSegmentedColormap.from_list('white_to_darkgreen', ['#ffffff', dark_green])
+cmap_gold = LinearSegmentedColormap.from_list('darkgold_to_white', [dark_gold, '#ffffff'])
 
 # Helper to keep text readable on dark backgrounds
 def text_contrast(series, invert=False):
@@ -296,67 +256,5 @@ tbody td { padding-left: 2px !important; padding-right: 2px !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------------------------
-# Tabs: Rankings | Team Dashboards
-# ---------------------------------
-tab_rankings, tab_team = st.tabs(["🏈 Rankings", "🧭 Team Dashboards"])
-
-with tab_rankings:
-    # ====== RANKINGS VIEW ======
-    st.markdown("## 🏈 College Football Rankings")
-    # ---- build 'view' exactly as you already do (filters/sort applied) ----
-    # (your existing code already produced 'view' and 'styled')
-    st.write(styled.to_html(escape=False), unsafe_allow_html=True)
-
-with tab_team:
-    # ====== TEAM DASHBOARD VIEW ======
-    # Top-of-page team selector (no sidebar here)
-    team_list = sorted(df.index.unique().tolist())
-    # if query param had a team, default to that; otherwise first in list
-    default_team = selected_team if selected_team in team_list else team_list[0]
-    picked_team = st.selectbox("Select team", options=team_list, index=team_list.index(default_team))
-    
-    # Single-team slice (use full df so columns match main table)
-    team_df = df.loc[[picked_team]]
-    team_view = team_df[[c for c in df.columns if c != 'Conf Name']].copy()
-
-    # Formatting: same rules
-    num_cols_team = [c for c in team_view.columns if pd.api.types.is_numeric_dtype(team_view[c])]
-    fmt_team = {c: '{:.1f}' for c in num_cols_team}
-    for col in ['Pre Rk', 'Rk', 'W', 'L']:
-        if col in team_view.columns:
-            fmt_team[col] = '{:.0f}'
-
-    team_styled = team_view.style.format(fmt_team).hide(axis='index')
-
-    # Reuse colormaps and text_contrast you defined earlier
-    for col in ['Pwr Rtg', 'Off Rtg']:
-        if col in team_view.columns:
-            team_styled = (team_styled
-                .background_gradient(cmap=cmap_blue, subset=[col],
-                                     vmin=team_view[col].min(), vmax=team_view[col].max())
-                .apply(text_contrast, subset=[col])
-            )
-    for col in ['Proj W', 'Proj Conf W']:
-        if col in team_view.columns:
-            team_styled = (team_styled
-                .background_gradient(cmap=cmap_green, subset=[col],
-                                     vmin=team_view[col].min(), vmax=team_view[col].max())
-                .apply(text_contrast, subset=[col])
-            )
-    for col in ['Def Rtg']:
-        if col in team_view.columns:
-            team_styled = (team_styled
-                .background_gradient(cmap=cmap_blue_r, subset=[col],
-                                     vmin=team_view[col].min(), vmax=team_view[col].max())
-                .apply(lambda s: text_contrast(s, invert=True), subset=[col])
-            )
-    for col in ['Sched Diff']:
-        if col in team_view.columns:
-            team_styled = (team_styled
-                .background_gradient(cmap=cmap_gold, subset=[col],
-                                     vmin=team_view[col].min(), vmax=team_view[col].max())
-                .apply(lambda s: text_contrast(s, invert=True), subset=[col])
-            )
-
-    st.write(team_styled.to_html(escape=False), unsafe_allow_html=True)
+st.markdown("## 🏈 College Football Rankings")
+st.write(styled.to_html(escape=False), unsafe_allow_html=True)
