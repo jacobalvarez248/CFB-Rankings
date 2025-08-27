@@ -68,15 +68,11 @@ preselect_team = unquote(query_params.get("selected_team", ""))
 if 'selected_team' not in st.session_state:
     st.session_state['selected_team'] = preselect_team if preselect_team else df.index[0]
 
-# Tab auto-switcher: insert JS to scroll to Team Dashboards if selected_team is set
-if preselect_team:
-    
-
-# Tabs at the top
+# Tab selector with auto-switch logic
 query_params = st.query_params
 selected_team = query_params.get("selected_team", "")
 default_tab = "📊 Team Dashboards" if selected_team else "🏆 Rankings"
-tab_choice = st.radio("", ["🏆 Rankings", "📊 Team Dashboards"], horizontal=True, index=0 if default_tab == "🏆 Rankings" else 1)
+tab_choice = st.radio("", ["🏆 Rankings", "📊 Team Dashboards"], horizontal=True, index=0 if default_tab == "🏆 Rankings" else 1)("", ["🏆 Rankings", "📊 Team Dashboards"], horizontal=True, index=0 if default_tab == "🏆 Rankings" else 1)
 
 if tab_choice == "🏆 Rankings":
     with st.sidebar:
