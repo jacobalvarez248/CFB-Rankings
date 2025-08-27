@@ -20,52 +20,53 @@ df, logos_df = load_data()
 # ---------------------------------
 # Merge and Clean Data
 # ---------------------------------
-# Merge logo URL from 'Logos' sheet
+# Merge logo URL
 df = df.merge(logos_df[['Team', 'Image URL']], on='Team', how='left')
 
-# Drop unnecessary columns
+# Drop unwanted columns
 df.drop(columns=['Column1', 'Column3', 'Column5'], inplace=True)
 
-# Format 'Current Rank' as integer
+# Ensure 'Current Rank' is integer
 df['Current Rank'] = df['Current Rank'].astype('Int64')
 
-# Create 'Logo' column from image URL
+# Create logo HTML
 df['Logo'] = df['Image URL'].apply(lambda url: f'<img src="{url}" width="40">' if pd.notna(url) else '')
 
-# Save 'Team' name before dropping the column
+# Save team name before removing
 df['Team Name'] = df['Team']
 
-# Reorder columns: Logo appears after ranks
+# Reorder columns
 cols = df.columns.tolist()
-cols.remove('Team')         # Already saved as 'Team Name'
-cols.remove('Image URL')    # No need to display
-cols.remove('Logo')         # Will reinsert
+for col_to_remove in ['Team', 'Image URL', 'Logo']:
+    if col_to_remove in cols:
+        cols.remove(col_to_remove)
 ordered_cols = ['Preseason Rank', 'Current Rank', 'Logo'] + cols
 df = df[ordered_cols]
 
-# Set team name as index (not shown)
+# Set index to team name
 df.set_index('Team Name', inplace=True)
 
 # ---------------------------------
-# Numeric columns for gradient styling
+# Validate columns for styling
 # ---------------------------------
-# Safe selection of numeric columns that actually exist
-float_cols = [col for col in df.columns if pd.api.types.is_numeric_dtype(df[col])]
+# Only style columns that exist
+existing_cols = df.columns.tolist()
+numeric_cols = [col for col in existing_cols if pd.api.types.is_numeric_dtype(df[col])]
 
-# Optional: show in dev
-# st.write("Numeric columns detected:", float_cols)
+# Defensive filtering: only format columns present
+format_dict = {col: '{:.1f}' for col in numeric_cols if col not in ['Preseason Rank', 'Current Rank']}
+format_dict.update({'Preseason Rank': '{:.0f}', 'Current Rank': '{:.0f}'})
 
 # ---------------------------------
-# Styled DataFrame
+# Apply styling safely
 # ---------------------------------
 styled_df = df.style \
-    .format({col: '{:.1f}' for col in float_cols if col not in ['Preseason Rank', 'Current Rank']}) \
-    .format({'Preseason Rank': '{:.0f}', 'Current Rank': '{:.0f}'}) \
-    .background_gradient(subset=float_cols, cmap='Blues') \
+    .format(format_dict) \
+    .background_gradient(subset=numeric_cols, cmap='Blues') \
     .hide(axis='index')
 
 # ---------------------------------
-# CSS: Prevent side scrolling
+# CSS for mobile: no side scroll
 # ---------------------------------
 st.markdown(
     """
@@ -95,10 +96,10 @@ st.markdown(
 )
 
 # ---------------------------------
-# Page Content
+# Display the Table
 # ---------------------------------
 st.markdown("## 🏈 College Football Rankings")
 st.markdown("Click a logo to view that team’s dashboard (coming soon).")
 
-# Render the styled table with HTML (preserves image tags)
+# Write styled table
 st.write(styled_df.to_html(escape=False), unsafe_allow_html=True)
