@@ -65,7 +65,7 @@ else:
 
 # --- Drop unwanted columns ---
 df.drop(columns=[
-    "Conf.",                # drop text version, keep only logo
+    "Conference",                # drop text version, keep only logo
     "Team",                      # drop team text, keep only logo
     "Image URL",                 # raw logo URL not needed
     "Vegas Win Total",
@@ -80,7 +80,7 @@ df.rename(columns={
     "Preseason Rank": "Pre. Rk.",
     "Current Rank": "Rk.",
     "Team Logo": "Team",
-    "Conference Logo": "Conf.",
+    "Conference Logo": "Conference",
     "Power Rating": "Pwr. Rtg.",
     "Offensive Rating": "Off. Rtg.",
     "Defensive Rating": "Def. Rtg.",
