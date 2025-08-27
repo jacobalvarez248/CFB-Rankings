@@ -122,7 +122,19 @@ cmap_blue = LinearSegmentedColormap.from_list('white_to_darknavy', ['#ffffff', d
 cmap_blue_r = cmap_blue.reversed()
 
 cmap_green = LinearSegmentedColormap.from_list('white_to_darkgreen', ['#ffffff', dark_green])
-cmap_red = LinearSegmentedColormap.from_list('darkred_to_white', [dark_red, '#ffffff'])
+dark_gold = '#b8860b'
+cmap_gold = LinearSegmentedColormap.from_list('darkgold_to_white', [dark_gold, '#ffffff'])
+
+# Apply “lower = darker gold”
+for col in ['Sched Diff']:
+    if col in df.columns:
+        styled = (
+            styled
+            .background_gradient(cmap=cmap_gold, subset=[col],
+                                 vmin=df[col].min(), vmax=df[col].max())
+            .apply(lambda s: text_contrast(s, invert=True), subset=[col])
+        )
+
 
 # Helper to set readable text color on dark backgrounds
 def text_contrast(series, invert=False):
