@@ -3,14 +3,8 @@ import pandas as pd
 from matplotlib.colors import LinearSegmentedColormap
 from urllib.parse import unquote
 
-# ---------------------------------
-# Page configuration
-# ---------------------------------
 st.set_page_config(page_title="CFB Rankings", layout="wide", initial_sidebar_state="collapsed")
 
-# ---------------------------------
-# Load Excel data
-# ---------------------------------
 @st.cache_data
 def load_data():
     df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Expected Wins', header=1)
@@ -19,9 +13,6 @@ def load_data():
 
 df, logos_df = load_data()
 
-# ---------------------------------
-# Utilities
-# ---------------------------------
 def deduplicate_columns(columns):
     seen = {}
     out = []
@@ -34,9 +25,6 @@ def deduplicate_columns(columns):
             out.append(c)
     return out
 
-# ---------------------------------
-# Normalize columns & merge logos
-# ---------------------------------
 df.columns = deduplicate_columns(df.columns)
 df = df.loc[:, ~df.columns.str.contains(r'\.(1|2|3|4)$')]
 df = df.merge(logos_df[['Team', 'Image URL']], on='Team', how='left')
@@ -46,19 +34,11 @@ df['Team Name'] = df['Team']
 df.set_index('Team Name', inplace=True)
 
 conf_logo_map = logos_df.set_index('Team')['Image URL'].to_dict()
-if 'Conference' in df.columns:
-    df['Conference Logo'] = df['Conference'].apply(
-        lambda conf: f'<img src="{conf_logo_map.get(conf, '')}" width="15">' if conf_logo_map.get(conf) else (conf if pd.notna(conf) else '')
-    )
-else:
-    df['Conference Logo'] = ''
+df['Conference Logo'] = df.get('Conference', pd.NA).apply(
+    lambda conf: f'<img src="{conf_logo_map.get(conf, '')}" width="15">' if conf_logo_map.get(conf) else (conf if pd.notna(conf) else '')
+)
+df['Conf Name'] = df.get('Conference', pd.NA)
 
-if 'Conference' in df.columns:
-    df['Conf Name'] = df['Conference']
-else:
-    df['Conf Name'] = pd.NA
-
-# Drop unwanted columns
 df.drop(columns=[
     "Conference", "Image URL", "Vegas Win Total",
     "Projected Overall Wins", "Projected Overall Losses",
@@ -66,7 +46,6 @@ df.drop(columns=[
     "Schedule Difficulty Rank", "Column1", "Column3", "Column5"
 ], errors='ignore', inplace=True)
 
-# Rename columns
 df.rename(columns={
     "Preseason Rank": "Pre Rk",
     "Current Rank": "Rk",
@@ -79,35 +58,24 @@ df.rename(columns={
     "Conference Logo": "Conf"
 }, inplace=True)
 
-# Add clickable team logos (for tab switching)
+# Add clickable team logos with JS to switch tab and set query param
 df['Team'] = df.apply(
-    lambda row: f'<a href="#%F0%9F%93%8A%20Team%20Dashboards" onclick="window.location.search=\'?selected_team={row.name}\'"><img src="{logos_df.set_index('Team').at[row.name, 'Image URL']}" width="15"></a>'
+    lambda row: f'''<img src="{logos_df.set_index('Team').at[row.name, 'Image URL']}" width="15" style="cursor:pointer" onclick="const url = new URL(window.location); url.searchParams.set('selected_team', '{row.name}'); window.location.href = url.href;">'''
     if row.name in logos_df.set_index('Team').index else '',
     axis=1
 )
 
-# Reorder columns
 first_cols = ["Pre Rk", "Rk", "Team", "Conf"]
 existing = [c for c in df.columns if c not in first_cols]
-ordered = [c for c in first_cols if c in df.columns] + existing
-df = df[ordered]
+df = df[[c for c in first_cols if c in df.columns] + existing]
 
-# ------------------------
-# Handle session state
-# ------------------------
 query_params = st.query_params
 preselect_team = unquote(query_params.get("selected_team", ""))
 if 'selected_team' not in st.session_state:
     st.session_state['selected_team'] = preselect_team if preselect_team else df.index[0]
 
-# ------------------------
-# Create Tabs
-# ------------------------
 tab1, tab2 = st.tabs(["\U0001F3C6 Rankings", "\U0001F4CA Team Dashboards"])
 
-# ------------------------
-# Tab 1: Rankings
-# ------------------------
 with tab1:
     with st.sidebar:
         st.header("Filters & Sort")
@@ -133,7 +101,6 @@ with tab1:
     visible_cols = [c for c in view.columns if c != 'Conf Name']
     view = view[visible_cols]
 
-    # Styling
     numeric_cols = [c for c in view.columns if pd.api.types.is_numeric_dtype(view[c])]
     fmt = {c: '{:.1f}' for c in numeric_cols}
     for col in ['Pre Rk', 'Rk', 'W', 'L']:
@@ -142,13 +109,10 @@ with tab1:
 
     styled = view.style.format(fmt).hide(axis='index')
 
-    dark_navy = '#002060'
-    dark_green = '#006400'
-    dark_gold = '#b8860b'
-    cmap_blue = LinearSegmentedColormap.from_list('white_to_darknavy', ['#ffffff', dark_navy])
+    cmap_blue = LinearSegmentedColormap.from_list('white_to_darknavy', ['#ffffff', '#002060'])
     cmap_blue_r = cmap_blue.reversed()
-    cmap_green = LinearSegmentedColormap.from_list('white_to_darkgreen', ['#ffffff', dark_green])
-    cmap_gold = LinearSegmentedColormap.from_list('darkgold_to_white', [dark_gold, '#ffffff'])
+    cmap_green = LinearSegmentedColormap.from_list('white_to_darkgreen', ['#ffffff', '#006400'])
+    cmap_gold = LinearSegmentedColormap.from_list('darkgold_to_white', ['#b8860b', '#ffffff'])
 
     def text_contrast(series, invert=False):
         vmin = float(series.min(skipna=True))
@@ -198,12 +162,8 @@ with tab1:
 
     st.write(styled.to_html(escape=False), unsafe_allow_html=True)
 
-# ------------------------
-# Tab 2: Team Dashboards
-# ------------------------
 with tab2:
     st.markdown("## 📊 Team Dashboards")
-
     all_teams = df.index.tolist()
     if st.session_state['selected_team'] in all_teams:
         default_index = all_teams.index(st.session_state['selected_team'])
