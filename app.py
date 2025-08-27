@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from matplotlib.colors import LinearSegmentedColormap
 
 # ---------------------------------
 # Page configuration
@@ -98,19 +99,56 @@ ordered = [c for c in first_cols if c in df.columns] + existing
 df = df[ordered]
 
 # ---------------------------------
-# Styling (no gradient) + number formats
+# Styling (with gradients) + number formats
 # ---------------------------------
 numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+
 # Base formatting: 1 decimal for most numerics
 fmt = {c: '{:.1f}' for c in numeric_cols}
-
-# Override special cases to whole numbers
+# Whole numbers for these
 for col in ['Pre Rk', 'Rk', 'W', 'L']:
     if col in df.columns:
         fmt[col] = '{:.0f}'
 
+# Build base styler
 styled = df.style.format(fmt).hide(axis='index')
 
+# Colormaps: white -> dark navy; and the reverse
+dark_navy = '#002060'
+cmap_blue = LinearSegmentedColormap.from_list('white_to_darknavy', ['#ffffff', dark_navy])
+cmap_blue_r = cmap_blue.reversed()
+
+# Helper to set readable text color on dark backgrounds
+def text_contrast(series, invert=False):
+    vmin = float(series.min(skipna=True))
+    vmax = float(series.max(skipna=True))
+    rng = (vmax - vmin) if vmax != vmin else 1.0
+    # normalize 0..1 where 1.0 corresponds to the darker end we care about
+    norm = (series - vmin) / rng
+    if invert:
+        norm = 1 - norm
+    # Use white text when background is dark enough (≥ 0.6 of the scale)
+    return ['color: white' if (x >= 0.6) else 'color: black' for x in norm.fillna(0)]
+
+# Apply “higher = darker” to these
+for col in ['Pwr Rtg', 'Off Rtg', 'Proj W', 'Proj Conf W']:
+    if col in df.columns:
+        styled = (
+            styled
+            .background_gradient(cmap=cmap_blue, subset=[col],
+                                 vmin=df[col].min(), vmax=df[col].max())
+            .apply(text_contrast, subset=[col])
+        )
+
+# Apply “lower = darker” (inverse) to these
+for col in ['Def Rtg', 'Sched Diff']:
+    if col in df.columns:
+        styled = (
+            styled
+            .background_gradient(cmap=cmap_blue_r, subset=[col],
+                                 vmin=df[col].min(), vmax=df[col].max())
+            .apply(lambda s: text_contrast(s, invert=True), subset=[col])
+        )
 
 # ---------------------------------
 # CSS: header bar color, centered headers, tight mobile layout
