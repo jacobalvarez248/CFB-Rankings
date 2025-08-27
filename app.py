@@ -1,61 +1,82 @@
 import streamlit as st
 import pandas as pd
 
-# Load data
-df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Expected Wins', header=1)
-logos_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Logos', header=1)
+st.set_page_config(page_title="CFB Rankings", layout="wide")
 
-# Merge logos into main DataFrame
+# ---------- Load Excel Data ----------
+@st.cache_data
+def load_data():
+    df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Expected Wins', header=1)
+    logos_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Logos', header=1)
+    return df, logos_df
+
+df, logos_df = load_data()
+
+# ---------- Merge and Clean ----------
 df = df.merge(logos_df[['Team', 'Image URL']], on='Team', how='left')
 
-# Drop unwanted columns
+# Drop columns not needed
 df.drop(columns=['Column1', 'Column3', 'Column5'], inplace=True)
 
-# Add team name as index (for filtering), but display logo instead
+# Format 'Current Rank' as integer
+df['Current Rank'] = df['Current Rank'].astype('Int64')
+
+# Create 'Logo' column from Image URL
 df['Logo'] = df['Image URL'].apply(lambda url: f'<img src="{url}" width="40">' if pd.notna(url) else '')
-df.set_index('Team', inplace=True)
 
-# Reorder: Logo first
-columns = ['Logo'] + [col for col in df.columns if col not in ['Logo', 'Image URL']]
-df = df[columns]
+# Reorder columns: Logo goes after 'Preseason Rank' and 'Current Rank'
+cols = df.columns.tolist()
+cols.remove('Team')
+cols.remove('Image URL')
+cols.remove('Logo')
+ordered_cols = ['Preseason Rank', 'Current Rank', 'Logo'] + cols
+df = df[ordered_cols]
 
-# Tabs
-tab1, tab2 = st.tabs(["🏆 Rankings", "📊 Team Dashboards"])
+# Use 'Team' as index for filtering (not shown in output)
+df['Team Name'] = df['Team']
+df.set_index('Team Name', inplace=True)
 
-# Session state to control navigation between tabs
-if "selected_team" not in st.session_state:
-    st.session_state.selected_team = None
+# ---------- Streamlit Styling ----------
+st.markdown(
+    """
+    <style>
+    .block-container {
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
+    table {
+        width: 100% !important;
+        table-layout: fixed;
+        word-wrap: break-word;
+        font-size: 14px;
+    }
+    td, th {
+        padding: 6px !important;
+        text-align: center !important;
+    }
+    img {
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
-# --- Rankings Tab ---
-with tab1:
-    st.markdown("### 📈 Rankings Overview")
+# ---------- Page Content ----------
+st.markdown("## 🏈 College Football Rankings")
+st.markdown("Click a logo to view that team’s dashboard (coming soon).")
 
-    # Make logos clickable
-    def make_clickable_logo(row):
-        team = row.name
-        return f'<a href="#team={team}">{row["Logo"]}</a>'
+# ---------- Styling ----------
+# Apply background gradient and number formatting
+float_cols = df.select_dtypes(include='number').columns.tolist()
 
-    df['Logo'] = df.apply(make_clickable_logo, axis=1)
+styled_df = df.style \
+    .format({col: '{:.1f}' for col in float_cols if col not in ['Preseason Rank', 'Current Rank']}) \
+    .format({'Preseason Rank': '{:.0f}', 'Current Rank': '{:.0f}'}) \
+    .background_gradient(subset=float_cols, cmap='Blues') \
+    .hide(axis='index')
 
-    # Prepare styled dataframe (numeric columns with gradient)
-    styled_df = df.style \
-        .format(precision=1) \
-        .hide(axis="index") \
-        .applymap(lambda v: 'background-color: #c6e2ff' if isinstance(v, (int, float)) else '', subset=df.select_dtypes(include='number').columns)
-
-    st.markdown("Click a logo to view team dashboard 👇", unsafe_allow_html=True)
-    st.write(styled_df.to_html(escape=False), unsafe_allow_html=True)
-
-# --- Team Dashboards Tab ---
-with tab2:
-    st.markdown("### 📊 Team Dashboards")
-
-    all_teams = sorted(df.index.unique())
-    default_team = st.session_state.selected_team or all_teams[0]
-
-    team_select = st.selectbox("Select a Team:", all_teams, index=all_teams.index(default_team))
-    st.session_state.selected_team = team_select
-
-    st.markdown(f"Showing data for **{team_select}**...")
-    # Placeholder for actual team-level content
-    st.info("Team dashboard content will be added here soon.")
+# ---------- Display as HTML with images ----------
+st.write(styled_df.to_html(escape=False), unsafe_allow_html=True)
