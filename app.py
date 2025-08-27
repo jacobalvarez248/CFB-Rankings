@@ -1,8 +1,14 @@
 import streamlit as st
 import pandas as pd
 
+# ---------------------------------
+# Page configuration
+# ---------------------------------
 st.set_page_config(page_title="CFB Rankings", layout="wide")
 
+# ---------------------------------
+# Load Excel data
+# ---------------------------------
 @st.cache_data
 def load_data():
     df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Expected Wins', header=1)
@@ -11,8 +17,11 @@ def load_data():
 
 df, logos_df = load_data()
 
-# --- De-duplicate columns coming from Excel merges ---
+# ---------------------------------
+# Utilities
+# ---------------------------------
 def deduplicate_columns(columns):
+    """Make column names unique: Name, Name.1, Name.2, ..."""
     seen = {}
     out = []
     for c in columns:
@@ -24,73 +33,126 @@ def deduplicate_columns(columns):
             out.append(c)
     return out
 
+# ---------------------------------
+# Normalize columns & merge logos
+# ---------------------------------
 df.columns = deduplicate_columns(df.columns)
-# drop any duplicate-suffixed cols if they slipped through
-df = df.loc[:, ~df.columns.str.contains(r'\.(1|2|3)$')]
+# Drop any duplicate-suffixed cols that might still exist
+df = df.loc[:, ~df.columns.str.contains(r'\.(1|2|3|4)$')]
 
-# --- Drop columns for mobile cleanliness ---
-df.drop(columns=[
-    "Vegas Win Total",
-    "Projected Overall Losses",
-    "Schedule Difficulty Rank"
-], errors='ignore', inplace=True)
-
-# --- Merge team logos ---
+# Merge in team logo URL
 df = df.merge(logos_df[['Team', 'Image URL']], on='Team', how='left')
 
-# types/formatting
+# Convert rank to integer (nullable safe)
 if 'Current Rank' in df.columns:
     df['Current Rank'] = df['Current Rank'].astype('Int64')
 
-# save Team Name first, then set as index BEFORE subsetting (critical fix)
+# Save team name for index and set it NOW (before any subsetting later)
 df['Team Name'] = df['Team']
 df.set_index('Team Name', inplace=True)
 
-# build team logo html
-df['Team Logo'] = df['Image URL'].apply(lambda url: f'<img src="{url}" width="40">' if pd.notna(url) else '')
+# Build team logo HTML
+df['Team Logo'] = df['Image URL'].apply(lambda u: f'<img src="{u}" width="40">' if pd.notna(u) else '')
 
-# --- Conference logos (from same Logos sheet) ---
+# Build conference logos from the same Logos sheet (expects rows like "SEC", "Big Ten", etc.)
 conf_logo_map = logos_df.set_index('Team')['Image URL'].to_dict()
 if 'Conference' in df.columns:
     df['Conference Logo'] = df['Conference'].apply(
         lambda conf: f'<img src="{conf_logo_map.get(conf, "")}" width="40">' if conf_logo_map.get(conf) else (conf if pd.notna(conf) else '')
     )
 else:
-    # If no Conference column is present, create an empty logo column to keep order stable
     df['Conference Logo'] = ''
 
-# --- Reorder columns: Preseason Rank | Current Rank | Team Logo | Conference Logo | (rest) ---
-cols = list(df.columns)  # these are columns AFTER index is set; index is not in this list
-for drop in ['Image URL', 'Team', 'Team Logo', 'Conference Logo']:
-    if drop in cols:
-        cols.remove(drop)
-for must_first in ['Preseason Rank', 'Current Rank']:
-    if must_first in cols:
-        cols.remove(must_first)
+# ---------------------------------
+# Drop & rename columns (per your spec)
+# ---------------------------------
+# Drop unwanted columns (text conference + misc)
+df.drop(columns=[
+    "Conference",                    # keep only the logo version
+    "Vegas Win Total",
+    "Projected Overall Losses",
+    "Projected Conference Losses",
+    "Schedule Difficulty Rank",
+    "Column1", "Column3", "Column5"
+], errors='ignore', inplace=True)
 
-ordered = ['Preseason Rank', 'Current Rank', 'Team Logo', 'Conference Logo'] + cols
-# Keep only columns that actually exist (in case some are missing in your sheet)
+# Rename headers to compact/mobile-friendly labels
+df.rename(columns={
+    "Preseason Rank": "Pre. Rk.",
+    "Current Rank": "Rk.",
+    "Team Logo": "Team",
+    "Conference Logo": "Conference",
+    "Power Rating": "Pwr. Rtg.",
+    "Offensive Rating": "Off. Rtg.",
+    "Defensive Rating": "Def. Rtg.",
+    "Current Wins": "Wins",
+    "Current Losses": "Losses",
+    "Projected Overall Wins": "Proj. Wins",
+    "Projected Conference Wins": "Proj. Conf. Wins",
+    "Schedule Difficulty": "Sched. Diff."
+}, inplace=True)
+
+# ---------------------------------
+# Reorder columns so first four are fixed: Pre. Rk., Rk., Team, Conference
+# ---------------------------------
+existing = list(df.columns)
+for must_first in ['Pre. Rk.', 'Rk.', 'Team', 'Conference']:
+    if must_first in existing:
+        existing.remove(must_first)
+ordered = ['Pre. Rk.', 'Rk.', 'Team', 'Conference'] + existing
+# keep only those that exist (protect if some were missing)
 ordered = [c for c in ordered if c in df.columns]
 df = df[ordered]
 
-# number formatting (no gradients)
+# ---------------------------------
+# Styling (no gradient) + number formats
+# ---------------------------------
 numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
 fmt = {c: '{:.1f}' for c in numeric_cols}
-for rank_col in ['Preseason Rank', 'Current Rank']:
+for rank_col in ['Pre. Rk.', 'Rk.']:
     if rank_col in df.columns:
         fmt[rank_col] = '{:.0f}'
 
 styled = df.style.format(fmt).hide(axis='index')
 
-# --- Mobile CSS: tighter padding + fixed table layout to avoid side-scroll ---
+# ---------------------------------
+# CSS: header bar color, centered headers, tight mobile layout
+# ---------------------------------
 st.markdown("""
 <style>
 .block-container { padding-left: .5rem !important; padding-right: .5rem !important; }
-table { width: 100% !important; table-layout: fixed; word-wrap: break-word; font-size: 13px; }
-td, th { padding: 4px !important; text-align: center !important; vertical-align: middle !important; }
-img { display: block; margin-left: auto; margin-right: auto; }
+table { width: 100% !important; table-layout: fixed; word-wrap: break-word; font-size: 13px; border-collapse: collapse; }
+td, th { padding: 6px !important; text-align: center !important; vertical-align: middle !important; }
+
+thead th {
+  background-color: #002060 !important;  /* navy */
+  color: #ffffff !important;              /* white text */
+  font-weight: 700 !important;
+}
+
+/* Team & Conference columns are 3rd and 4th after reordering */
+thead th:nth-child(3),
+thead th:nth-child(4),
+tbody td:nth-child(3),
+tbody td:nth-child(4) {
+  text-align: center !important;
+  vertical-align: middle !important;
+  width: 70px;
+  min-width: 60px;
+  max-width: 80px;
+  overflow: hidden;
+}
+
+/* center images */
+td img { display: block; margin: 0 auto; }
+
+/* small padding tweaks for phones */
+tbody td { padding-left: 4px !important; padding-right: 4px !important; }
 </style>
 """, unsafe_allow_html=True)
 
+# ---------------------------------
+# Render
+# ---------------------------------
 st.markdown("## 🏈 College Football Rankings (Mobile-Optimized)")
 st.write(styled.to_html(escape=False), unsafe_allow_html=True)
