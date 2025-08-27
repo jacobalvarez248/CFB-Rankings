@@ -11,7 +11,7 @@ def load_data():
 
 df, logos_df = load_data()
 
-# ✅ Deduplicate column names
+# Deduplicate columns
 def deduplicate_columns(columns):
     seen = {}
     new_columns = []
@@ -26,47 +26,39 @@ def deduplicate_columns(columns):
 
 df.columns = deduplicate_columns(df.columns)
 
-# ✅ Drop any known bad duplicates manually (keep clean set only)
-columns_to_drop = [col for col in df.columns if col.endswith('.1') or col.endswith('.2')]
-df.drop(columns=columns_to_drop, inplace=True)
+# Drop bad duplicates like 'Current Rank.1'
+df = df.loc[:, ~df.columns.str.contains(r'\.1$|\.2$|\.3$')]
 
-# Merge logo image
+# Merge logos
 df = df.merge(logos_df[['Team', 'Image URL']], on='Team', how='left')
 df.drop(columns=['Column1', 'Column3', 'Column5'], errors='ignore', inplace=True)
 df['Current Rank'] = df['Current Rank'].astype('Int64')
 
-# Create logo column
+# Create logo image column
 df['Logo'] = df['Image URL'].apply(lambda url: f'<img src="{url}" width="40">' if pd.notna(url) else '')
 df['Team Name'] = df['Team']
 
-# Reorder columns (Logo after ranks)
-columns = df.columns.tolist()
+# Reorder columns
+cols = df.columns.tolist()
 for col in ['Team', 'Image URL', 'Logo']:
-    if col in columns:
-        columns.remove(col)
-ordered = ['Preseason Rank', 'Current Rank', 'Logo'] + columns
+    if col in cols:
+        cols.remove(col)
+ordered = ['Preseason Rank', 'Current Rank', 'Logo'] + cols
 df = df[ordered]
 df.set_index('Team Name', inplace=True)
 
-# ✅ Only use valid numeric columns
-valid_cols = df.columns.tolist()
-numeric_cols = [col for col in valid_cols if pd.api.types.is_numeric_dtype(df[col])]
+# Format numeric columns
+numeric_cols = [col for col in df.columns if pd.api.types.is_numeric_dtype(df[col])]
 
-# Format dictionary
 format_dict = {col: '{:.1f}' for col in numeric_cols}
 for col in ['Preseason Rank', 'Current Rank']:
     if col in df.columns:
         format_dict[col] = '{:.0f}'
 
-# ✅ Final safe styling block
-styled_df = df.style.format(format_dict)
+# Apply styling (no gradient)
+styled_df = df.style.format(format_dict).hide(axis='index')
 
-if numeric_cols:
-    styled_df = styled_df.background_gradient(subset=numeric_cols, cmap='Blues')
-
-styled_df = styled_df.hide(axis='index')
-
-# Mobile layout
+# CSS for mobile layout
 st.markdown("""
     <style>
     .block-container { padding-left: 1rem !important; padding-right: 1rem !important; }
@@ -76,7 +68,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# ✅ Final display
+# Page content
 st.markdown("## 🏈 College Football Rankings")
 st.markdown("Click a logo to view that team’s dashboard (coming soon).")
 st.write(styled_df.to_html(escape=False), unsafe_allow_html=True)
