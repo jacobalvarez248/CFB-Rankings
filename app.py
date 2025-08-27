@@ -210,7 +210,7 @@ tbody td:nth-child(3),
 tbody td:nth-child(4) {
   text-align: center !important;
   vertical-align: middle !important;
-  width: 30px;
+  width: 50px;
   min-width: 55px;
   max-width: 75px;
   overflow: hidden;
