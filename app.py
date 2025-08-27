@@ -92,7 +92,7 @@ df.rename(columns={
 }, inplace=True)
 
 # --- Reorder cleanly ---
-first_cols = ["Pre. Rk.", "Rk.", "Team", "Conf."]
+first_cols = ["Pre Rk", "Rk", "Team", "Conf"]
 existing = [c for c in df.columns if c not in first_cols]
 ordered = [c for c in first_cols if c in df.columns] + existing
 df = df[ordered]
