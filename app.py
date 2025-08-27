@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from matplotlib.colors import LinearSegmentedColormap
 from urllib.parse import unquote
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title="CFB Rankings", layout="wide", initial_sidebar_state="expanded")
 
@@ -67,6 +68,17 @@ preselect_team = unquote(query_params.get("selected_team", ""))
 if 'selected_team' not in st.session_state:
     st.session_state['selected_team'] = preselect_team if preselect_team else df.index[0]
 
+# Tab auto-switcher: insert JS to scroll to Team Dashboards if selected_team is set
+if preselect_team:
+    components.html("""
+    <script>
+    const target = window.location.href;
+    if (target.includes('selected_team')) {
+        window.parent.scrollTo(0, document.body.scrollHeight);
+    }
+    </script>
+    """, height=0)
+
 # Tabs at the top
 tab1, tab2 = st.tabs(["🏆 Rankings", "📊 Team Dashboards"])
 
@@ -98,7 +110,7 @@ if tab1:
     view = view[visible_cols]
 
     view['Team'] = view.apply(
-        lambda row: f'<a href="?selected_team={row.name}"><img src="{logos_df.set_index('Team').at[row.name, 'Image URL']}" width="15"></a>'
+        lambda row: f'<a href="?selected_team={row.name}#📊%20Team%20Dashboards"><img src="{logos_df.set_index('Team').at[row.name, 'Image URL']}" width="15"></a>'
         if row.name in logos_df.set_index('Team').index else '',
         axis=1
     )
