@@ -87,23 +87,13 @@ def load_data(sheet_name: Optional[str] = None) -> pd.DataFrame:
     try:
         blob = fetch_github_bytes(GITHUB_OWNER, GITHUB_REPO, GITHUB_FILE_PATH, ref=GITHUB_REF, token=token)
     except Exception as e:
-        raise ValueError(
-            (
-
-            "Could not download Excel from GitHub.
-"
-            f"Repo: {GITHUB_OWNER}/{GITHUB_REPO}
-Path: {GITHUB_FILE_PATH}
-Ref: {GITHUB_REF}
-"
-            f"Detail: {e}"
-        )
+        raise ValueError("Could not download Excel from GitHub. Repo: {GITHUB_OWNER}/{GITHUB_REPO}, Path: {GITHUB_FILE_PATH}, Ref: {GITHUB_REF}, Detail: " + str(e))
 
     # Read the workbook bytes into a DataFrame
     df = read_excel_flexible(io.BytesIO(blob), sheet_name=sheet_name)
 
     if df is None or (isinstance(df, dict) and all((not isinstance(v, pd.DataFrame) or v.empty) for v in df.values())):
-        raise ValueError("The GitHub workbook has no non-empty sheets.")
+        raise ValueError("Could not download Excel from GitHub. Repo: {GITHUB_OWNER}/{GITHUB_REPO}, Path: {GITHUB_FILE_PATH}, Ref: {GITHUB_REF}, Detail: " + str(e))
 
     if isinstance(df, dict):
         # pick the first non-empty sheet deterministically by name
