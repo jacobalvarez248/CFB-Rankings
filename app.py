@@ -74,6 +74,8 @@ df.drop(columns=[
     "Projected Conference Losses",
     "Schedule Difficulty Rank",  # spelling-safe, drops if present
     "Column1", "Column3", "Column5"
+    "Projected Overall Wins",
+    "Projected Conference Wins",
 ], errors='ignore', inplace=True)
 
 # --- Rename columns ---
@@ -87,8 +89,6 @@ df.rename(columns={
     "Defensive Rating": "Def Rtg",
     "Current Wins": "W",
     "Current Losses": "L",
-    "Projected Overall Wins": "Proj W",
-    "Projected Conference Wins": "Proj Conf W",
     "Schedule Difficulty": "Sched Diff"
 }, inplace=True)
 
