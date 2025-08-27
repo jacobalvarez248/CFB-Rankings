@@ -82,7 +82,7 @@ if preselect_team:
 # Tabs at the top
 tab1, tab2 = st.tabs(["🏆 Rankings", "📊 Team Dashboards"])
 
-if tab1:
+with tab1:
     with st.sidebar:
         st.header("Filters & Sort")
         team_query = st.text_input("Team contains", value="")
@@ -176,7 +176,7 @@ if tab1:
 
     st.write(styled.to_html(escape=False), unsafe_allow_html=True)
 
-if tab2:
+with tab2:
     st.markdown("## 📊 Team Dashboards")
     all_teams = df.index.tolist()
     if st.session_state['selected_team'] in all_teams:
