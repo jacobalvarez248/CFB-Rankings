@@ -52,13 +52,13 @@ df['Team Name'] = df['Team']
 df.set_index('Team Name', inplace=True)
 
 # Build team logo HTML
-df['Team Logo'] = df['Image URL'].apply(lambda u: f'<img src="{u}" width="40">' if pd.notna(u) else '')
+df['Team Logo'] = df['Image URL'].apply(lambda u: f'<img src="{u}" width="15">' if pd.notna(u) else '')
 
 # Build conference logos from the same Logos sheet (expects rows like "SEC", "Big Ten", etc.)
 conf_logo_map = logos_df.set_index('Team')['Image URL'].to_dict()
 if 'Conference' in df.columns:
     df['Conference Logo'] = df['Conference'].apply(
-        lambda conf: f'<img src="{conf_logo_map.get(conf, "")}" width="40">' if conf_logo_map.get(conf) else (conf if pd.notna(conf) else '')
+        lambda conf: f'<img src="{conf_logo_map.get(conf, "")}" width="15">' if conf_logo_map.get(conf) else (conf if pd.notna(conf) else '')
     )
 else:
     df['Conference Logo'] = ''
