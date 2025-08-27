@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 from matplotlib.colors import LinearSegmentedColormap
+from urllib.parse import quote_plus
+
 
 # ---------------------------------
 # Page configuration
@@ -17,6 +19,17 @@ def load_data():
     return df, logos_df
 
 df, logos_df = load_data()
+
+# ---------------------------------
+# Query params (for cross-tab navigation)
+# ---------------------------------
+try:
+    qp = st.query_params  # Streamlit >=1.30
+    requested_tab = qp.get("tab", "Rankings")
+    requested_team = qp.get("team", None)
+except Exception:
+    requested_tab = "Rankings"
+    requested_team = None
 
 # ---------------------------------
 # Utilities
@@ -52,8 +65,17 @@ if 'Current Rank' in df.columns:
 df['Team Name'] = df['Team']
 df.set_index('Team Name', inplace=True)
 
-# Build team logo HTML
-df['Team Logo'] = df['Image URL'].apply(lambda u: f'<img src="{u}" width="15">' if pd.notna(u) else '')
+# Build team logo HTML (clickable to jump to Team Dashboards with team preselected)
+def team_logo_html(url, team_name):
+    if pd.isna(url):
+        return ''
+    q_team = quote_plus(str(team_name))
+    return f'<a href="?tab=Team%20Dashboards&team={q_team}" title="Open Team Dashboard"><img src="{url}" width="15"></a>'
+
+df['Team Logo'] = [
+    team_logo_html(u, idx)
+    for u, idx in zip(df['Image URL'], df['Team Name'])
+]
 
 # Build conference logos from the same Logos sheet (expects rows like "SEC", "Big Ten", etc.)
 conf_logo_map = logos_df.set_index('Team')['Image URL'].to_dict()
@@ -256,5 +278,61 @@ tbody td { padding-left: 2px !important; padding-right: 2px !important; }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("## 🏈 College Football Rankings")
-st.write(styled.to_html(escape=False), unsafe_allow_html=True)
+# ---------------------------------
+# Tabs UI
+# ---------------------------------
+tabs = st.tabs(["Rankings", "Team Dashboards"])
+
+# Figure out which tab to show first via lightweight JS click (optional nicety)
+# (Streamlit doesn't natively preselect a tab; this will auto-click the header if query param requests the dashboard)
+if requested_tab == "Team Dashboards":
+    st.markdown("""
+    <script>
+    const want = "Team Dashboards";
+    const tryClick = () => {
+      const els = window.parent.document.querySelectorAll('button[role="tab"]');
+      for (const el of els) {
+        if (el.innerText.trim() === want) { el.click(); break; }
+      }
+    };
+    window.addEventListener('load', () => setTimeout(tryClick, 50));
+    </script>
+    """, unsafe_allow_html=True)
+
+# --- Rankings tab ---
+with tabs[0]:
+    st.markdown("## 🏈 College Football Rankings")
+    st.write(styled.to_html(escape=False), unsafe_allow_html=True)
+
+# --- Team Dashboards tab ---
+with tabs[1]:
+    st.markdown("## 📊 Team Dashboards")
+
+    teams = list(df.index.unique())
+    # Default to the requested team (from query param) if valid; else first team alphabetically
+    default_team = requested_team if (requested_team in teams) else (requested_team if requested_team in (t.lower() for t in teams) else None)
+    if default_team is None:
+        default_team = sorted(teams)[0]
+
+    # Build the selector (kept simple for now)
+    selected_team = st.selectbox("Team", sorted(teams), index=sorted(teams).index(default_team) if default_team in teams else 0, key="team_dashboard_select")
+
+    # --- Example content: quick KPIs + the row slice ---
+    row = df.loc[selected_team]
+
+    # Show a few top-line metrics if present
+    kpi_cols = [c for c in ["Rk", "Pre Rk", "Pwr Rtg", "Off Rtg", "Def Rtg", "W", "L", "Proj W", "Proj Conf W", "Sched Diff"] if c in df.columns]
+    cols = st.columns(min(4, len(kpi_cols)) or 1)
+    for i, c in enumerate(kpi_cols[:4]):
+        with cols[i]:
+            val = row[c] if pd.notna(row[c]) else "-"
+            st.metric(c, f"{val:.1f}" if isinstance(val, (int, float)) and c not in ["Rk","Pre Rk","W","L"] else f"{val}")
+
+    # Full team details table
+    st.markdown("#### Team Detail")
+    # Rebuild a neat 1-row frame for display (hide the logo HTML)
+    show_cols = [c for c in df.columns if c not in ["Team"]]  # keep numeric/text, omit logo cell
+    detail = pd.DataFrame([row[show_cols]]).T
+    detail.columns = [selected_team]
+    st.dataframe(detail, use_container_width=True)
+
