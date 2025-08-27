@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 # ---------------------------------
-# Streamlit page configuration
+# Page configuration
 # ---------------------------------
 st.set_page_config(page_title="CFB Rankings", layout="wide")
 
@@ -37,21 +37,27 @@ df['Team Name'] = df['Team']
 
 # Reorder columns: Logo appears after ranks
 cols = df.columns.tolist()
-cols.remove('Team')         # Already stored as 'Team Name'
+cols.remove('Team')         # Already saved as 'Team Name'
 cols.remove('Image URL')    # No need to display
-cols.remove('Logo')         # We'll reinsert it
+cols.remove('Logo')         # Will reinsert
 ordered_cols = ['Preseason Rank', 'Current Rank', 'Logo'] + cols
 df = df[ordered_cols]
 
-# Set team name as index (not displayed)
+# Set team name as index (not shown)
 df.set_index('Team Name', inplace=True)
 
 # ---------------------------------
-# Gradient Formatting for Numeric Columns
+# Numeric columns for gradient styling
 # ---------------------------------
-# Recalculate numeric columns that actually exist in the current DataFrame
+# Safe selection of numeric columns that actually exist
 float_cols = [col for col in df.columns if pd.api.types.is_numeric_dtype(df[col])]
 
+# Optional: show in dev
+# st.write("Numeric columns detected:", float_cols)
+
+# ---------------------------------
+# Styled DataFrame
+# ---------------------------------
 styled_df = df.style \
     .format({col: '{:.1f}' for col in float_cols if col not in ['Preseason Rank', 'Current Rank']}) \
     .format({'Preseason Rank': '{:.0f}', 'Current Rank': '{:.0f}'}) \
@@ -59,7 +65,7 @@ styled_df = df.style \
     .hide(axis='index')
 
 # ---------------------------------
-# Style the page to prevent side scrolling
+# CSS: Prevent side scrolling
 # ---------------------------------
 st.markdown(
     """
@@ -89,10 +95,10 @@ st.markdown(
 )
 
 # ---------------------------------
-# Render the Rankings Page
+# Page Content
 # ---------------------------------
 st.markdown("## 🏈 College Football Rankings")
 st.markdown("Click a logo to view that team’s dashboard (coming soon).")
 
-# Display styled DataFrame with logo images
+# Render the styled table with HTML (preserves image tags)
 st.write(styled_df.to_html(escape=False), unsafe_allow_html=True)
