@@ -71,21 +71,26 @@ if 'selected_team' not in st.session_state:
 # Tab auto-switcher: insert JS to scroll to Team Dashboards if selected_team is set
 if preselect_team:
     components.html("""
-    <script>
-    window.addEventListener("load", () => {
-      const urlParams = new URLSearchParams(window.location.search);
-      const selectedTeam = urlParams.get("selected_team");
-      if (selectedTeam) {
-        setTimeout(() => {
-          const tabHeaders = parent.document.querySelectorAll("button[data-baseweb='tab']");
-          [...tabHeaders].forEach(btn => {
-            if (btn.innerText.includes("Team Dashboards")) btn.click();
-          });
-        }, 200);
+<script>
+window.addEventListener("load", () => {
+  const selectedTeam = new URLSearchParams(window.location.search).get("selected_team");
+  if (!selectedTeam) return;
+
+  function clickDashboardTab() {
+    const tabs = window.document.querySelectorAll("button[data-baseweb='tab']");
+    for (let tab of tabs) {
+      if (tab.innerText.includes("Team Dashboards")) {
+        tab.click();
+        break;
       }
-    });
-    </script>
-    """, height=0)
+    }
+  }
+
+  clickDashboardTab();
+  setTimeout(clickDashboardTab, 300);
+});
+</script>
+""", height=0)
 
 # Tabs at the top
 tab1, tab2 = st.tabs(["🏆 Rankings", "📊 Team Dashboards"])
