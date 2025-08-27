@@ -49,7 +49,8 @@ df.set_index('Team Name', inplace=True)
 # ---------------------------------
 # Gradient Formatting for Numeric Columns
 # ---------------------------------
-float_cols = df.select_dtypes(include='number').columns.tolist()
+# Recalculate numeric columns that actually exist in the current DataFrame
+float_cols = [col for col in df.columns if pd.api.types.is_numeric_dtype(df[col])]
 
 styled_df = df.style \
     .format({col: '{:.1f}' for col in float_cols if col not in ['Preseason Rank', 'Current Rank']}) \
