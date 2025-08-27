@@ -72,10 +72,18 @@ if 'selected_team' not in st.session_state:
 if preselect_team:
     components.html("""
     <script>
-    const target = window.location.href;
-    if (target.includes('selected_team')) {
-        window.parent.scrollTo(0, document.body.scrollHeight);
-    }
+    window.addEventListener("load", () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const selectedTeam = urlParams.get("selected_team");
+      if (selectedTeam) {
+        setTimeout(() => {
+          const tabHeaders = parent.document.querySelectorAll("button[data-baseweb='tab']");
+          [...tabHeaders].forEach(btn => {
+            if (btn.innerText.includes("Team Dashboards")) btn.click();
+          });
+        }, 200);
+      }
+    });
     </script>
     """, height=0)
 
