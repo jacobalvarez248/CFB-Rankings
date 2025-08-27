@@ -13,7 +13,19 @@ def load_data():
 df, logos_df = load_data()
 
 # 🔁 Force all column names to be unique
-df.columns = pd.io.parsers.ParserBase({'names': df.columns})._maybe_dedup_names(df.columns)
+def deduplicate_columns(columns):
+    seen = {}
+    new_columns = []
+    for col in columns:
+        if col not in seen:
+            seen[col] = 0
+            new_columns.append(col)
+        else:
+            seen[col] += 1
+            new_columns.append(f"{col}.{seen[col]}")
+    return new_columns
+
+df.columns = deduplicate_columns(df.columns)
 
 # Merge logos
 df = df.merge(logos_df[['Team', 'Image URL']], on='Team', how='left')
