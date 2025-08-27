@@ -1,347 +1,260 @@
-# app.py — CFB Rankings with Team Dashboards cross‑tab navigation
-# ---------------------------------------------------------------
-# This is a self‑contained Streamlit app that:
-# 1) Loads your rankings data from an .xlsm file (local or uploaded)
-# 2) Renders a Rankings tab with clickable team logos
-# 3) Opens a Team Dashboards tab pre‑selected to the clicked team via query params
-# 4) Is robust to different column names (Team/School/etc.) and a missing Image URL column
-#
-# Drop this file into your app (or replace your main script) and run:
-#   streamlit run app.py
-#
-# Notes:
-# - By default, it reads "/mnt/data/CFB Rankings Upload.xlsm" if present.
-# - If not found, you can upload the workbook at runtime via the sidebar.
-# - The app expects at least one way to identify teams (a team column or index).
-
-from __future__ import annotations
-import os
-import io
-from typing import Optional, Iterable
-
-import numpy as np
-import pandas as pd
 import streamlit as st
-from urllib.parse import quote_plus
+import pandas as pd
+from matplotlib.colors import LinearSegmentedColormap
 
+# ---------------------------------
+# Page configuration
+# ---------------------------------
+st.set_page_config(page_title="CFB Rankings", layout="wide", initial_sidebar_state="collapsed")
 
-# =============================
+# ---------------------------------
+# Load Excel data
+# ---------------------------------
+@st.cache_data
+def load_data():
+    df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Expected Wins', header=1)
+    logos_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Logos', header=1)
+    return df, logos_df
+
+df, logos_df = load_data()
+
+# ---------------------------------
 # Utilities
-# =============================
+# ---------------------------------
+def deduplicate_columns(columns):
+    """Make column names unique: Name, Name.1, Name.2, ..."""
+    seen = {}
+    out = []
+    for c in columns:
+        if c in seen:
+            seen[c] += 1
+            out.append(f"{c}.{seen[c]}")
+        else:
+            seen[c] = 0
+            out.append(c)
+    return out
 
-# --- GitHub config (EDIT THESE TO MATCH YOUR REPO) ---
-GITHUB_OWNER = "<your-org-or-username>"
-GITHUB_REPO = "<your-repo>"
-GITHUB_FILE_PATH = "CFB Rankings Upload.xlsm"  # path inside the repo
-GITHUB_REF = "main"  # branch, tag, or commit sha
-# Optional: if the repo is private, set env var GITHUB_TOKEN in your deployment settings
+# ---------------------------------
+# Normalize columns & merge logos
+# ---------------------------------
+df.columns = deduplicate_columns(df.columns)
+# Drop any duplicate-suffixed cols that might still exist
+df = df.loc[:, ~df.columns.str.contains(r'\.(1|2|3|4)$')]
 
-import requests
-import base64
+# Merge in team logo URL
+df = df.merge(logos_df[['Team', 'Image URL']], on='Team', how='left')
 
+# Convert rank to integer (nullable safe)
+if 'Current Rank' in df.columns:
+    df['Current Rank'] = df['Current Rank'].astype('Int64')
 
-def fetch_github_bytes(owner: str, repo: str, path: str, ref: str = "main", token: str | None = None) -> bytes:
-    """Fetch a file's raw bytes from GitHub. Tries raw URL first, then Contents API (base64)."""
-    headers = {}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-        headers["X-GitHub-Api-Version"] = "2022-11-28"
+# Save team name for index and set it NOW (before any subsetting later)
+df['Team Name'] = df['Team']
+df.set_index('Team Name', inplace=True)
 
-    # 1) Try raw.githubusercontent.com (works for public and private with token when using API download)
-    raw_url = f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}"
-    r = requests.get(raw_url, headers=headers, timeout=30)
-    if r.status_code == 200 and r.content:
-        return r.content
+# Build team logo HTML
+df['Team Logo'] = df['Image URL'].apply(lambda u: f'<img src="{u}" width="15">' if pd.notna(u) else '')
 
-    # 2) Fallback: GitHub Contents API (base64-encoded)
-    api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={ref}"
-    r2 = requests.get(api_url, headers=headers, timeout=30)
-    if r2.status_code == 200:
-        payload = r2.json()
-        if isinstance(payload, dict) and payload.get("encoding") == "base64" and payload.get("content"):
-            return base64.b64decode(payload["content"])
-
-    raise RuntimeError(f"Failed to fetch file from GitHub: {owner}/{repo}@{ref}:{path} (status {r.status_code} / {r2.status_code if 'r2' in locals() else 'no-contents'})")
-
-def read_excel_flexible(file_like, sheet_name: Optional[str] = None) -> pd.DataFrame:
-    """Read an Excel(xls/xlsx/xlsm) into a DataFrame using openpyxl if available.
-    Tries pandas default engine first, falls back to openpyxl.
-    If sheet_name is None, reads the first visible sheet.
-    """
-    try:
-        if sheet_name is None:
-            return pd.read_excel(file_like)
-        return pd.read_excel(file_like, sheet_name=sheet_name)
-    except Exception:
-        try:
-            if sheet_name is None:
-                return pd.read_excel(file_like, engine="openpyxl")
-            return pd.read_excel(file_like, engine="openpyxl", sheet_name=sheet_name)
-        except Exception as e:
-            raise e
-
-
-def load_data(sheet_name: Optional[str] = None) -> pd.DataFrame:
-    """Load rankings data directly from GitHub (no uploads)."""
-    token = os.getenv("GITHUB_TOKEN", None)
-    try:
-        blob = fetch_github_bytes(GITHUB_OWNER, GITHUB_REPO, GITHUB_FILE_PATH, ref=GITHUB_REF, token=token)
-    except Exception as e:
-        raise ValueError("Could not download Excel from GitHub. Repo: {GITHUB_OWNER}/{GITHUB_REPO}, Path: {GITHUB_FILE_PATH}, Ref: {GITHUB_REF}, Detail: " + str(e))
-
-    # Read the workbook bytes into a DataFrame
-    df = read_excel_flexible(io.BytesIO(blob), sheet_name=sheet_name)
-
-    if df is None or (isinstance(df, dict) and all((not isinstance(v, pd.DataFrame) or v.empty) for v in df.values())):
-        raise ValueError("Could not download Excel from GitHub. Repo: {GITHUB_OWNER}/{GITHUB_REPO}, Path: {GITHUB_FILE_PATH}, Ref: {GITHUB_REF}, Detail: " + str(e))
-
-    if isinstance(df, dict):
-        # pick the first non-empty sheet deterministically by name
-        for name in sorted(df.keys()):
-            sub = df[name]
-            if isinstance(sub, pd.DataFrame) and not sub.empty:
-                df = sub
-                break
-
-    df = df.copy()
-    df.columns = [str(c).strip() for c in df.columns]
-    return df
-
-
-def get_team_series(df: pd.DataFrame) -> pd.Series:
-    """Return a string Series with team names, from one of common columns or the index."""
-    candidates = ["Team Name", "Team", "School", "Name"]
-    for c in candidates:
-        if c in df.columns:
-            s = df[c].astype(str)
-            s.name = c
-            return s
-    s = pd.Series(df.index.astype(str), index=df.index, name="__index_team__")
-    return s
-
-
-def get_image_series(df: pd.DataFrame) -> pd.Series:
-    """Return a URL Series for logos if present; otherwise a None series."""
-    if "Image URL" in df.columns:
-        return df["Image URL"]
-    return pd.Series([None] * len(df), index=df.index, name="Image URL")
-
-
-def team_logo_anchor(url: Optional[str], team_name: str) -> str:
-    """Return HTML for a small clickable logo that links to the Team Dashboards tab for the given team."""
-    if not url or (isinstance(url, float) and np.isnan(url)):
-        return ""
-    q_team = quote_plus(str(team_name))
-    return f'<a href="?tab=Team%20Dashboards&team={q_team}" title="Open Team Dashboard for {team_name}"><img src="{url}" width="18"></a>'
-
-
-# =============================
-# App Config
-# =============================
-
-st.set_page_config(page_title="CFB Rankings & Team Dashboards", layout="wide")
-
-# Read query params (Streamlit >=1.30: st.query_params; fallback to experimental)
-try:
-    qp = st.query_params  # type: ignore[attr-defined]
-    requested_tab = qp.get("tab", "Rankings")
-    requested_team = qp.get("team", None)
-except Exception:
-    try:
-        qp2 = st.experimental_get_query_params()  # deprecated fallback
-        requested_tab = qp2.get("tab", ["Rankings"])[0]
-        requested_team = qp2.get("team", [None])[0]
-    except Exception:
-        requested_tab, requested_team = "Rankings", None
-
-
-# =============================
-# Load Data
-# =============================
-
-try:
-    df = load_data()
-except Exception as e:
-    st.error("❌ Unable to load data from GitHub. Check the repo/name/path/ref and (if private) set GITHUB_TOKEN.")
-    st.exception(e)
-    st.stop()
-
-# Build robust team + image series
-team_s = get_team_series(df)
-img_s = get_image_series(df)
-
-# Guarantee an identifier column for display
-if team_s.name not in df.columns:
-    # If team names come from index, create a visible column
-    df = df.copy()
-    df["Team"] = team_s.values
-    team_col_name = "Team"
+# Build conference logos from the same Logos sheet (expects rows like "SEC", "Big Ten", etc.)
+conf_logo_map = logos_df.set_index('Team')['Image URL'].to_dict()
+if 'Conference' in df.columns:
+    df['Conference Logo'] = df['Conference'].apply(
+        lambda conf: f'<img src="{conf_logo_map.get(conf, "")}" width="15">' if conf_logo_map.get(conf) else (conf if pd.notna(conf) else '')
+    )
 else:
-    team_col_name = team_s.name
+    df['Conference Logo'] = ''
 
-# Create clickable logo column
-logo_col = [team_logo_anchor(u, t) for u, t in zip(img_s, team_s)]
+# Keep a plain-text conference name for filtering before we drop the text column
+if 'Conference' in df.columns:
+    df['Conf Name'] = df['Conference']
+else:
+    df['Conf Name'] = pd.NA
 
-# Compose a display DataFrame for Rankings
-# Prefer to show Logo + Team + common metric columns if they exist
-common_metrics = [
-    "Rk", "Pre Rk", "Pwr Rtg", "Off Rtg", "Def Rtg",
-    "W", "L", "Proj W", "Proj Conf W", "Sched Diff"
-]
-show_cols: list[str] = []
-if "Team Logo" not in df.columns:
-    df = df.copy()
-    df["Team Logo"] = logo_col
-show_cols.append("Team Logo")
-if team_col_name in df.columns:
-    show_cols.append(team_col_name)
-for c in common_metrics:
-    if c in df.columns:
-        show_cols.append(c)
+# --- Drop unwanted columns ---
+df.drop(columns=[
+    "Conference",                # drop text version, keep only logo
+    "Team",                      # drop team text, keep only logo
+    "Image URL",                 # raw logo URL not needed
+    "Vegas Win Total",
+    "Projected Overall Wins",
+    "Projected Overall Losses",
+    "Projected Conference Wins",
+    "Projected Conference Losses",
+    "Schedule Difficulty Rank",  # spelling-safe, drops if present
+    "Column1", "Column3", "Column5"
+], errors='ignore', inplace=True)
 
-rankings_df = df[show_cols].copy()
+# --- Rename columns ---
+df.rename(columns={
+    "Preseason Rank": "Pre Rk",
+    "Current Rank": "Rk",
+    "Team Logo": "Team",
+    "Conference Logo": "Conf",
+    "Power Rating": "Pwr Rtg",
+    "Offensive Rating": "Off Rtg",
+    "Defensive Rating": "Def Rtg",
+    "Current Wins": "W",
+    "Current Losses": "L",
+    "Schedule Difficulty": "Sched Diff"
+}, inplace=True)
 
-# =============================
-# UI — Tabs
-# =============================
+# --- Reorder cleanly ---
+first_cols = ["Pre Rk", "Rk", "Team", "Conf"]
+existing = [c for c in df.columns if c not in first_cols]
+ordered = [c for c in first_cols if c in df.columns] + existing
+df = df[ordered]
 
-tabs = st.tabs(["Rankings", "Team Dashboards"])  # Streamlit can't preselect, so we JS-click below
+# ---------------------------------
+# Sidebar controls (filters + sorting)
+# ---------------------------------
+with st.sidebar:
+    st.header("Filters & Sort")
 
-# Auto-click the dashboard tab if query params request it
-if requested_tab == "Team Dashboards":
-    st.markdown(
-        """
-        <script>
-        (function(){
-          const want = "Team Dashboards";
-          const go = () => {
-            const tabs = window.parent.document.querySelectorAll('button[role="tab"]');
-            for (const t of tabs) { if (t.innerText.trim() === want) { t.click(); break; } }
-          };
-          window.addEventListener('load', () => setTimeout(go, 60));
-        })();
-        </script>
-        """,
-        unsafe_allow_html=True,
-    )
+    # Team substring search (uses the index, which you set to 'Team Name')
+    team_query = st.text_input("Team contains", value="")
 
-# -----------------------------
-# Rankings Tab
-# -----------------------------
-with tabs[0]:
-    st.markdown("## 🏈 College Football Rankings")
+    # Conference multiselect (based on the preserved text column)
+    conf_options = sorted([c for c in df['Conf Name'].dropna().unique()])
+    conf_selected = st.multiselect("Conference", conf_options)
 
-    # Basic sorting if a rank column exists
-    if "Rk" in rankings_df.columns:
-        rankings_df = rankings_df.sort_values("Rk", ascending=True)
+    # Choose sort column (include text helpers for better UX)
+    sortable_cols = [c for c in df.columns if c not in ['Team', 'Conf']] + ['Team Name', 'Conf Name']
+    primary_sort = st.selectbox("Sort by", options=sortable_cols, index=sortable_cols.index('Rk') if 'Rk' in sortable_cols else 0)
+    sort_ascending = st.checkbox("Ascending", value=True)
 
-    # Render with HTML to show clickable images
-    html_table = (
-        rankings_df.to_html(escape=False, index=False)
-        .replace("<table border=\"1\" class=\"dataframe\">", "<table class=\"dataframe\" style=\"width:100%;\">")
-    )
+# Start from the working view
+view = df.copy()
 
-    st.write(html_table, unsafe_allow_html=True)
+# Apply Team filter
+if team_query:
+    view = view[view.index.str.contains(team_query, case=False, na=False)]
 
-    # Optional: double-click anywhere on a team logo to navigate (single-click via <a> already works)
-    st.markdown(
-        """
-        <script>
-        document.addEventListener('dblclick', function(e) {
-          const img = e.target.closest('img');
-          if (!img) return;
-          const parent = img.closest('a');
-          if (parent && parent.href) { window.location = parent.href; }
-        });
-        </script>
-        """,
-        unsafe_allow_html=True,
-    )
+# Apply Conference filter
+if conf_selected:
+    view = view[view['Conf Name'].isin(conf_selected)]
 
-# -----------------------------
-# Team Dashboards Tab
-# -----------------------------
-with tabs[1]:
-    st.markdown("## 📊 Team Dashboards")
+# Sorting: if user chose helper columns that aren't displayed (Team Name / Conf Name), they still work
+if primary_sort in view.columns:
+    view = view.sort_values(by=primary_sort, ascending=sort_ascending, kind="mergesort")
+elif primary_sort == 'Team Name':
+    view = view.sort_values(by=view.index.name, ascending=sort_ascending, kind="mergesort")
+elif primary_sort == 'Conf Name':
+    view = view.sort_values(by='Conf Name', ascending=sort_ascending, kind="mergesort")
 
-    # All unique team names (strings)
-    teams = sorted(pd.unique(team_s.astype(str)))
+# We don't want to *display* helper columns; keep your original visible ordering
+visible_cols = [c for c in view.columns if c != 'Conf Name']
+view = view[visible_cols]
 
-    # Determine default
-    default_team = None
-    if requested_team is not None and str(requested_team) in teams:
-        default_team = str(requested_team)
-    elif teams:
-        default_team = teams[0]
+# ---------------------------------
+# Styling (with gradients) + number formats
+# ---------------------------------
+numeric_cols = [c for c in view.columns if pd.api.types.is_numeric_dtype(view[c])]
 
-    # Selector
-    if teams:
-        idx = teams.index(default_team) if default_team in teams else 0
-        selected_team = st.selectbox("Team", teams, index=idx, key="team_dashboard_select")
-    else:
-        st.warning("No teams found in the dataset.")
-        st.stop()
+# Base formatting: 1 decimal for most numerics
+fmt = {c: '{:.1f}' for c in numeric_cols}
+# Whole numbers for these
+for col in ['Pre Rk', 'Rk', 'W', 'L']:
+    if col in view.columns:
+        fmt[col] = '{:.0f}'
 
-    # Filter the rows for the selected team whether team is a column or index
-    if team_s.name in df.columns:
-        filtered = df[df[team_s.name].astype(str) == str(selected_team)]
-    else:
-        filtered = df[df.index.astype(str) == str(selected_team)]
+# Build base styler
+styled = view.style.format(fmt).hide(axis='index')
 
-    if filtered.empty:
-        st.info("No rows found for the selected team.")
-    else:
-        # KPIs from the first row
-        row = filtered.iloc[0]
-        kpi_cols = [c for c in [
-            "Rk", "Pre Rk", "Pwr Rtg", "Off Rtg", "Def Rtg",
-            "W", "L", "Proj W", "Proj Conf W", "Sched Diff"
-        ] if c in filtered.columns]
+# Colormaps
+dark_navy = '#002060'
+dark_green = '#006400'
+dark_gold = '#b8860b'
 
-        if kpi_cols:
-            cols = st.columns(min(4, max(1, len(kpi_cols))))
-            for i, c in enumerate(kpi_cols[:4]):
-                val = row[c]
-                if isinstance(val, (int, float)) and c not in ["Rk", "Pre Rk", "W", "L"]:
-                    cols[i].metric(c, f"{val:.1f}")
-                else:
-                    cols[i].metric(c, f"{val}")
+from matplotlib.colors import LinearSegmentedColormap
+cmap_blue = LinearSegmentedColormap.from_list('white_to_darknavy', ['#ffffff', dark_navy])
+cmap_blue_r = cmap_blue.reversed()
+cmap_green = LinearSegmentedColormap.from_list('white_to_darkgreen', ['#ffffff', dark_green])
+cmap_gold = LinearSegmentedColormap.from_list('darkgold_to_white', [dark_gold, '#ffffff'])
 
-        st.markdown("#### Team Detail")
-        # Hide the raw team column if it exists; keep everything else (you can also hide the logo col if desired)
-        hide_cols = set()
-        if team_s.name in filtered.columns:
-            hide_cols.add(team_s.name)
-        # hide_cols.add("Team Logo")  # uncomment to hide the small logo column in the detail table
+# Helper to keep text readable on dark backgrounds
+def text_contrast(series, invert=False):
+    vmin = float(series.min(skipna=True))
+    vmax = float(series.max(skipna=True))
+    rng = (vmax - vmin) if vmax != vmin else 1.0
+    norm = (series - vmin) / rng
+    if invert:
+        norm = 1 - norm
+    return ['color: white' if (x >= 0.6) else 'color: black' for x in norm.fillna(0)]
 
-        detail_cols = [c for c in filtered.columns if c not in hide_cols]
-        st.dataframe(filtered[detail_cols], use_container_width=True)
+# Apply gradients (each column on its own scale, using view's min/max)
+for col in ['Pwr Rtg', 'Off Rtg']:
+    if col in view.columns:
+        styled = (
+            styled
+            .background_gradient(cmap=cmap_blue, subset=[col],
+                                 vmin=view[col].min(), vmax=view[col].max())
+            .apply(text_contrast, subset=[col])
+        )
 
-        # Placeholder for expansion: add charts, schedules, player stats, etc.
-        # Example: Show numeric columns as a quick profile
-        num_cols = [c for c in detail_cols if pd.api.types.is_numeric_dtype(filtered[c])]
-        if num_cols:
-            st.markdown("#### Numeric Profile (first row)")
-            st.bar_chart(filtered.iloc[[0]][num_cols].T)
+for col in ['Proj W', 'Proj Conf W']:
+    if col in view.columns:
+        styled = (
+            styled
+            .background_gradient(cmap=cmap_green, subset=[col],
+                                 vmin=view[col].min(), vmax=view[col].max())
+            .apply(text_contrast, subset=[col])
+        )
 
+for col in ['Def Rtg']:
+    if col in view.columns:
+        styled = (
+            styled
+            .background_gradient(cmap=cmap_blue_r, subset=[col],
+                                 vmin=view[col].min(), vmax=view[col].max())
+            .apply(lambda s: text_contrast(s, invert=True), subset=[col])
+        )
 
-# =============================
-# Footer / Help
-# =============================
-with st.expander("Help & Tips"):
-    st.markdown(
-        """
-        **Navigation**  
-        • Click a team logo on the *Rankings* tab to jump to that team's dashboard.  
-        • The URL will include `?tab=Team%20Dashboards&team=<Team>` so you can bookmark/share direct links.  
+for col in ['Sched Diff']:
+    if col in view.columns:
+        styled = (
+            styled
+            .background_gradient(cmap=cmap_gold, subset=[col],
+                                 vmin=view[col].min(), vmax=view[col].max())
+            .apply(lambda s: text_contrast(s, invert=True), subset=[col])
+        )
 
-        **Data expectations**  
-        • A team identifier is required in one of these: `Team Name`, `Team`, `School`, `Name`, or the dataframe index.  
-        • Logos are optional in the `Image URL` column.  
-        • Common metric columns (shown if present): `Rk`, `Pre Rk`, `Pwr Rtg`, `Off Rtg`, `Def Rtg`, `W`, `L`, `Proj W`, `Proj Conf W`, `Sched Diff`.  
+# ---------------------------------
+# CSS: header bar color, centered headers, tight mobile layout
+# ---------------------------------
+st.markdown("""
+<style>
+.block-container { padding-left: .5rem !important; padding-right: .5rem !important; }
+table { width: 100% !important; table-layout: fixed; word-wrap: break-word; font-size: 11px; border-collapse: collapse; }
+td, th { padding: 4px !important; text-align: center !important; vertical-align: middle !important; font-size: 11px; }
 
-        **Customization**  
-        • Add charts, schedules, and deeper stats inside the Team Dashboards tab where indicated.  
-        • If your sheet uses different column names, update `get_team_series()` and the `common_metrics` list accordingly.  
-        """
-    )
+thead th {
+  background-color: #002060 !important;
+  color: #ffffff !important;
+  font-weight: 500 !important;
+  font-size: 10px !important;   /* smaller header font */
+  padding: 1px 3px !important;  /* tighter header padding */
+}
+
+/* Team & Conference columns */
+thead th:nth-child(3),
+thead th:nth-child(4),
+tbody td:nth-child(3),
+tbody td:nth-child(4) {
+  text-align: center !important;
+  vertical-align: middle !important;
+  width: 50px;
+  min-width: 55px;
+  max-width: 75px;
+  overflow: hidden;
+}
+
+/* center images */
+td img { display: block; margin: 0 auto; }
+
+/* tighter spacing for phones */
+tbody td { padding-left: 2px !important; padding-right: 2px !important; }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("## 🏈 College Football Rankings")
+st.write(styled.to_html(escape=False), unsafe_allow_html=True)
