@@ -48,9 +48,6 @@ df['Team Logo'] = df['Image URL'].apply(lambda url: f'<img src="{url}" width="40
 conf_logos = logos_df.set_index('Team')['Image URL'].to_dict()
 df['Conference Logo'] = df['Conference'].apply(lambda conf: f'<img src="{conf_logos.get(conf, "")}" width="40">' if conf in conf_logos else conf)
 
-# --- Final cleanup ---
-df['Team Name'] = df['Team']
-
 # Reorder columns
 cols = df.columns.tolist()
 for col in ['Team', 'Image URL', 'Team Logo', 'Conference Logo', 'Team Name']:
