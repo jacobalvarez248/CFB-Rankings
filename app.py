@@ -35,9 +35,11 @@ columns_to_remove = [
 ]
 df.drop(columns=columns_to_remove, errors='ignore', inplace=True)
 
-# --- Merge logos ---
 df = df.merge(logos_df[['Team', 'Image URL']], on='Team', how='left')
 df['Current Rank'] = df['Current Rank'].astype('Int64')
+
+# ✅ Save Team Name BEFORE anything else touches 'Team'
+df['Team Name'] = df['Team']
 
 # --- Add logo columns ---
 df['Team Logo'] = df['Image URL'].apply(lambda url: f'<img src="{url}" width="40">' if pd.notna(url) else '')
