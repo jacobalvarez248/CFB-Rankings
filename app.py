@@ -43,6 +43,12 @@ cols = df.columns.tolist()
 for col in ['Team', 'Image URL', 'Logo']:
     if col in cols:
         cols.remove(col)
+
+# Remove any existing copies before adding them manually
+for col in ['Preseason Rank', 'Current Rank']:
+    if col in cols:
+        cols.remove(col)
+
 ordered = ['Preseason Rank', 'Current Rank', 'Logo'] + cols
 df = df[ordered]
 df.set_index('Team Name', inplace=True)
