@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 
 # Load data
-df = pd.read_excel('data/CFB Rankings Upload.xlsm', sheet_name='Expected Wins', header=1)
-logos_df = pd.read_excel('data/CFB Rankings Upload.xlsm', sheet_name='Logos', header=1)
+df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Expected Wins', header=1)
+logos_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Logos', header=1)
 
 # Merge logos into main DataFrame
 df = df.merge(logos_df[['Team', 'Image URL']], on='Team', how='left')
