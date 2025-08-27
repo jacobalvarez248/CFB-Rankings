@@ -60,7 +60,7 @@ else:
 
 # Drop unwanted columns
 df.drop(columns=[
-    "Conference", "Team", "Image URL", "Vegas Win Total",
+    "Conference", "Image URL", "Vegas Win Total",
     "Projected Overall Wins", "Projected Overall Losses",
     "Projected Conference Wins", "Projected Conference Losses",
     "Schedule Difficulty Rank", "Column1", "Column3", "Column5"
@@ -78,6 +78,13 @@ df.rename(columns={
     "Schedule Difficulty": "Sched Diff",
     "Conference Logo": "Conf"
 }, inplace=True)
+
+# Add clickable team logos (for tab switching)
+df['Team'] = df.apply(
+    lambda row: f'<a href="#%F0%9F%93%8A%20Team%20Dashboards" onclick="window.location.search=\'?selected_team={row.name}\'"><img src="{logos_df.set_index('Team').at[row.name, 'Image URL']}" width="15"></a>'
+    if row.name in logos_df.set_index('Team').index else '',
+    axis=1
+)
 
 # Reorder columns
 first_cols = ["Pre Rk", "Rk", "Team", "Conf"]
@@ -125,13 +132,6 @@ with tab1:
 
     visible_cols = [c for c in view.columns if c != 'Conf Name']
     view = view[visible_cols]
-
-    # Make logo clickable to jump to dashboard
-    view['Team'] = view.apply(
-        lambda row: f'<a href="#\U0001F4CA%20Team%20Dashboards" onclick="window.location.search=\'?selected_team={row.name}\'"><img src="{logos_df.set_index('Team').at[row.name, 'Image URL']}" width="15"></a>'
-        if row.name in logos_df.set_index('Team').index else '',
-        axis=1
-    )
 
     # Styling
     numeric_cols = [c for c in view.columns if pd.api.types.is_numeric_dtype(view[c])]
