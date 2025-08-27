@@ -102,7 +102,7 @@ df.rename(columns={
 # --- Make team logos clickable (link passes ?team=<name> and scrolls to #teamdash) ---
 def mk_team_logo(url, team_name):
     if pd.notna(url):
-        return f'<a href="?team={urllib.parse.quote(str(team_name))}#teamdash"><img src="{url}" width="15"></a>'
+        return f'<a href="?tab=team&team={urllib.parse.quote(str(team_name))}"><img src="{url}" width="15"></a>'
     return ''
 # Use the index (Team Name) for display name in href
 df['Team'] = [mk_team_logo(u, name) for u, name in zip(
@@ -117,17 +117,24 @@ ordered = [c for c in first_cols if c in df.columns] + existing
 df = df[ordered]
 
 # ---------------------------------
-# Query params: pick up ?team=... (from logo clicks or manual link)
+# Query params
 # ---------------------------------
 selected_team = None
+target_tab = None
 try:
     qp = st.query_params
+    # team (normalize to str or None)
     selected_team = qp.get("team", [None])
     if isinstance(selected_team, list):
         selected_team = selected_team[0] if selected_team else None
+    # tab hint (e.g., 'team')
+    target_tab = qp.get("tab", [None])
+    if isinstance(target_tab, list):
+        target_tab = target_tab[0] if target_tab else None
 except Exception:
     qp = st.experimental_get_query_params()
     selected_team = qp.get("team", [None])[0] if qp.get("team") else None
+    target_tab = qp.get("tab", [None])[0] if qp.get("tab") else None
 
 # ---------------------------------
 # Sidebar controls (filters + sorting + team dashboard picker)
@@ -290,61 +297,66 @@ tbody td { padding-left: 2px !important; padding-right: 2px !important; }
 """, unsafe_allow_html=True)
 
 # ---------------------------------
-# Rankings table
+# Tabs: Rankings | Team Dashboards
 # ---------------------------------
-st.markdown("## 🏈 College Football Rankings")
-st.write(styled.to_html(escape=False), unsafe_allow_html=True)
+tab_rankings, tab_team = st.tabs(["🏈 Rankings", "🧭 Team Dashboards"])
 
-# ---------------------------------
-# Team Dashboards section
-# ---------------------------------
-st.markdown('<a name="teamdash"></a>', unsafe_allow_html=True)
-st.markdown("### 🧭 Team Dashboards")
+with tab_rankings:
+    # ====== RANKINGS VIEW ======
+    st.markdown("## 🏈 College Football Rankings")
+    # ---- build 'view' exactly as you already do (filters/sort applied) ----
+    # (your existing code already produced 'view' and 'styled')
+    st.write(styled.to_html(escape=False), unsafe_allow_html=True)
 
-# Single-team slice
-team_df = df.loc[[selected_team]] if selected_team in df.index else df.iloc[[0]]
-team_view = team_df[[c for c in df.columns if c != 'Conf Name']].copy()
+with tab_team:
+    # ====== TEAM DASHBOARD VIEW ======
+    # Top-of-page team selector (no sidebar here)
+    team_list = sorted(df.index.unique().tolist())
+    # if query param had a team, default to that; otherwise first in list
+    default_team = selected_team if selected_team in team_list else team_list[0]
+    picked_team = st.selectbox("Select team", options=team_list, index=team_list.index(default_team))
+    
+    # Single-team slice (use full df so columns match main table)
+    team_df = df.loc[[picked_team]]
+    team_view = team_df[[c for c in df.columns if c != 'Conf Name']].copy()
 
-# Team-level formatting
-num_cols_team = [c for c in team_view.columns if pd.api.types.is_numeric_dtype(team_view[c])]
-fmt_team = {c: '{:.1f}' for c in num_cols_team}
-for col in ['Pre Rk', 'Rk', 'W', 'L']:
-    if col in team_view.columns:
-        fmt_team[col] = '{:.0f}'
+    # Formatting: same rules
+    num_cols_team = [c for c in team_view.columns if pd.api.types.is_numeric_dtype(team_view[c])]
+    fmt_team = {c: '{:.1f}' for c in num_cols_team}
+    for col in ['Pre Rk', 'Rk', 'W', 'L']:
+        if col in team_view.columns:
+            fmt_team[col] = '{:.0f}'
 
-team_styled = team_view.style.format(fmt_team).hide(axis='index')
+    team_styled = team_view.style.format(fmt_team).hide(axis='index')
 
-# Reuse colormaps
-for col in ['Pwr Rtg', 'Off Rtg']:
-    if col in team_view.columns:
-        team_styled = (team_styled
-            .background_gradient(cmap=cmap_blue, subset=[col],
-                                 vmin=team_view[col].min(), vmax=team_view[col].max())
-            .apply(text_contrast, subset=[col])
-        )
+    # Reuse colormaps and text_contrast you defined earlier
+    for col in ['Pwr Rtg', 'Off Rtg']:
+        if col in team_view.columns:
+            team_styled = (team_styled
+                .background_gradient(cmap=cmap_blue, subset=[col],
+                                     vmin=team_view[col].min(), vmax=team_view[col].max())
+                .apply(text_contrast, subset=[col])
+            )
+    for col in ['Proj W', 'Proj Conf W']:
+        if col in team_view.columns:
+            team_styled = (team_styled
+                .background_gradient(cmap=cmap_green, subset=[col],
+                                     vmin=team_view[col].min(), vmax=team_view[col].max())
+                .apply(text_contrast, subset=[col])
+            )
+    for col in ['Def Rtg']:
+        if col in team_view.columns:
+            team_styled = (team_styled
+                .background_gradient(cmap=cmap_blue_r, subset=[col],
+                                     vmin=team_view[col].min(), vmax=team_view[col].max())
+                .apply(lambda s: text_contrast(s, invert=True), subset=[col])
+            )
+    for col in ['Sched Diff']:
+        if col in team_view.columns:
+            team_styled = (team_styled
+                .background_gradient(cmap=cmap_gold, subset=[col],
+                                     vmin=team_view[col].min(), vmax=team_view[col].max())
+                .apply(lambda s: text_contrast(s, invert=True), subset=[col])
+            )
 
-for col in ['Proj W', 'Proj Conf W']:
-    if col in team_view.columns:
-        team_styled = (team_styled
-            .background_gradient(cmap=cmap_green, subset=[col],
-                                 vmin=team_view[col].min(), vmax=team_view[col].max())
-            .apply(text_contrast, subset=[col])
-        )
-
-for col in ['Def Rtg']:
-    if col in team_view.columns:
-        team_styled = (team_styled
-            .background_gradient(cmap=cmap_blue_r, subset=[col],
-                                 vmin=team_view[col].min(), vmax=team_view[col].max())
-            .apply(lambda s: text_contrast(s, invert=True), subset=[col])
-        )
-
-for col in ['Sched Diff']:
-    if col in team_view.columns:
-        team_styled = (team_styled
-            .background_gradient(cmap=cmap_gold, subset=[col],
-                                 vmin=team_view[col].min(), vmax=team_view[col].max())
-            .apply(lambda s: text_contrast(s, invert=True), subset=[col])
-        )
-
-st.write(team_styled.to_html(escape=False), unsafe_allow_html=True)
+    st.write(team_styled.to_html(escape=False), unsafe_allow_html=True)
