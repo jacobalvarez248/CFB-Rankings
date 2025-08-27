@@ -11,78 +11,86 @@ def load_data():
 
 df, logos_df = load_data()
 
-# --- De-duplicate columns ---
+# --- De-duplicate columns coming from Excel merges ---
 def deduplicate_columns(columns):
     seen = {}
-    new_columns = []
-    for col in columns:
-        if col not in seen:
-            seen[col] = 0
-            new_columns.append(col)
+    out = []
+    for c in columns:
+        if c in seen:
+            seen[c] += 1
+            out.append(f"{c}.{seen[c]}")
         else:
-            seen[col] += 1
-            new_columns.append(f"{col}.{seen[col]}")
-    return new_columns
+            seen[c] = 0
+            out.append(c)
+    return out
 
 df.columns = deduplicate_columns(df.columns)
-df = df.loc[:, ~df.columns.str.contains(r'\.1$|\.2$|\.3$')]
+# drop any duplicate-suffixed cols if they slipped through
+df = df.loc[:, ~df.columns.str.contains(r'\.(1|2|3)$')]
 
-# --- Drop columns you want removed ---
-columns_to_remove = [
+# --- Drop columns for mobile cleanliness ---
+df.drop(columns=[
     "Vegas Win Total",
     "Projected Overall Losses",
     "Schedule Difficulty Rank"
-]
-df.drop(columns=columns_to_remove, errors='ignore', inplace=True)
+], errors='ignore', inplace=True)
 
+# --- Merge team logos ---
 df = df.merge(logos_df[['Team', 'Image URL']], on='Team', how='left')
-df['Current Rank'] = df['Current Rank'].astype('Int64')
 
-# ✅ Save Team Name BEFORE anything else touches 'Team'
+# types/formatting
+if 'Current Rank' in df.columns:
+    df['Current Rank'] = df['Current Rank'].astype('Int64')
+
+# save Team Name first, then set as index BEFORE subsetting (critical fix)
 df['Team Name'] = df['Team']
-
-# --- Add logo columns ---
-df['Team Logo'] = df['Image URL'].apply(lambda url: f'<img src="{url}" width="40">' if pd.notna(url) else '')
-
-# Get conference logos using same "Logos" tab
-conf_logos = logos_df.set_index('Team')['Image URL'].to_dict()
-df['Conference Logo'] = df['Conference'].apply(lambda conf: f'<img src="{conf_logos.get(conf, "")}" width="40">' if conf in conf_logos else conf)
-
-# Reorder columns
-cols = df.columns.tolist()
-for col in ['Team', 'Image URL', 'Team Logo', 'Conference Logo', 'Team Name']:
-    if col in cols:
-        cols.remove(col)
-
-# Ensure no duplicates in manual list
-for col in ['Preseason Rank', 'Current Rank', 'Conference']:
-    if col in cols:
-        cols.remove(col)
-
-ordered = ['Preseason Rank', 'Current Rank', 'Team Logo', 'Conference Logo'] + cols
-df = df[ordered]
 df.set_index('Team Name', inplace=True)
 
-# Format numeric columns
-numeric_cols = [col for col in df.columns if pd.api.types.is_numeric_dtype(df[col])]
-format_dict = {col: '{:.1f}' for col in numeric_cols}
-for col in ['Preseason Rank', 'Current Rank']:
-    if col in df.columns:
-        format_dict[col] = '{:.0f}'
+# build team logo html
+df['Team Logo'] = df['Image URL'].apply(lambda url: f'<img src="{url}" width="40">' if pd.notna(url) else '')
 
-# Style DataFrame
-styled_df = df.style.format(format_dict).hide(axis='index')
+# --- Conference logos (from same Logos sheet) ---
+conf_logo_map = logos_df.set_index('Team')['Image URL'].to_dict()
+if 'Conference' in df.columns:
+    df['Conference Logo'] = df['Conference'].apply(
+        lambda conf: f'<img src="{conf_logo_map.get(conf, "")}" width="40">' if conf_logo_map.get(conf) else (conf if pd.notna(conf) else '')
+    )
+else:
+    # If no Conference column is present, create an empty logo column to keep order stable
+    df['Conference Logo'] = ''
 
-# --- CSS to prevent scroll & optimize mobile ---
+# --- Reorder columns: Preseason Rank | Current Rank | Team Logo | Conference Logo | (rest) ---
+cols = list(df.columns)  # these are columns AFTER index is set; index is not in this list
+for drop in ['Image URL', 'Team', 'Team Logo', 'Conference Logo']:
+    if drop in cols:
+        cols.remove(drop)
+for must_first in ['Preseason Rank', 'Current Rank']:
+    if must_first in cols:
+        cols.remove(must_first)
+
+ordered = ['Preseason Rank', 'Current Rank', 'Team Logo', 'Conference Logo'] + cols
+# Keep only columns that actually exist (in case some are missing in your sheet)
+ordered = [c for c in ordered if c in df.columns]
+df = df[ordered]
+
+# number formatting (no gradients)
+numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+fmt = {c: '{:.1f}' for c in numeric_cols}
+for rank_col in ['Preseason Rank', 'Current Rank']:
+    if rank_col in df.columns:
+        fmt[rank_col] = '{:.0f}'
+
+styled = df.style.format(fmt).hide(axis='index')
+
+# --- Mobile CSS: tighter padding + fixed table layout to avoid side-scroll ---
 st.markdown("""
-    <style>
-    .block-container { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
-    table { width: 100% !important; table-layout: fixed; word-wrap: break-word; font-size: 13px; }
-    td, th { padding: 4px !important; text-align: center !important; }
-    img { display: block; margin-left: auto; margin-right: auto; }
-    </style>
+<style>
+.block-container { padding-left: .5rem !important; padding-right: .5rem !important; }
+table { width: 100% !important; table-layout: fixed; word-wrap: break-word; font-size: 13px; }
+td, th { padding: 4px !important; text-align: center !important; vertical-align: middle !important; }
+img { display: block; margin-left: auto; margin-right: auto; }
+</style>
 """, unsafe_allow_html=True)
 
-# --- Render page ---
 st.markdown("## 🏈 College Football Rankings (Mobile-Optimized)")
-st.write(styled_df.to_html(escape=False), unsafe_allow_html=True)
+st.write(styled.to_html(escape=False), unsafe_allow_html=True)
