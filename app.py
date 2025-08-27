@@ -65,7 +65,7 @@ else:
 
 # --- Drop unwanted columns ---
 df.drop(columns=[
-    "Conference",                # drop text version, keep only logo
+    "Conf.",                # drop text version, keep only logo
     "Team",                      # drop team text, keep only logo
     "Image URL",                 # raw logo URL not needed
     "Vegas Win Total",
