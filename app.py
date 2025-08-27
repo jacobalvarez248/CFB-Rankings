@@ -13,6 +13,40 @@ from urllib.parse import quote_plus
 # Utilities
 # =============================
 
+# --- GitHub config (EDIT THESE TO MATCH YOUR REPO) ---
+GITHUB_OWNER = "<your-org-or-username>"
+GITHUB_REPO = "<your-repo>"
+GITHUB_FILE_PATH = "CFB Rankings Upload.xlsm"  # path inside the repo
+GITHUB_REF = "main"  # branch, tag, or commit sha
+# Optional: if the repo is private, set env var GITHUB_TOKEN in your deployment settings
+
+import requests
+import base64
+
+
+def fetch_github_bytes(owner: str, repo: str, path: str, ref: str = "main", token: str | None = None) -> bytes:
+    """Fetch a file's raw bytes from GitHub. Tries raw URL first, then Contents API (base64)."""
+    headers = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+        headers["X-GitHub-Api-Version"] = "2022-11-28"
+
+    # 1) Try raw.githubusercontent.com (works for public and private with token when using API download)
+    raw_url = f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}"
+    r = requests.get(raw_url, headers=headers, timeout=30)
+    if r.status_code == 200 and r.content:
+        return r.content
+
+    # 2) Fallback: GitHub Contents API (base64-encoded)
+    api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={ref}"
+    r2 = requests.get(api_url, headers=headers, timeout=30)
+    if r2.status_code == 200:
+        payload = r2.json()
+        if isinstance(payload, dict) and payload.get("encoding") == "base64" and payload.get("content"):
+            return base64.b64decode(payload["content"])
+
+    raise RuntimeError(f"Failed to fetch file from GitHub: {owner}/{repo}@{ref}:{path} (status {r.status_code} / {r2.status_code if 'r2' in locals() else 'no-contents'})")
+
 def read_excel_flexible(file_like, sheet_name: Optional[str] = None) -> pd.DataFrame:
     """Read an Excel(xls/xlsx/xlsm) into a DataFrame using openpyxl if available.
     Tries pandas default engine first, falls back to openpyxl.
@@ -31,41 +65,38 @@ def read_excel_flexible(file_like, sheet_name: Optional[str] = None) -> pd.DataF
             raise e
 
 
-def load_data(default_path: str = "/mnt/data/CFB Rankings Upload.xlsm",
-              sheet_name: Optional[str] = None) -> pd.DataFrame:
-    """Load rankings data from default path or from user upload in the sidebar.
-    - If default file exists, use it.
-    - Else, show a sidebar uploader.
-    Returns a non-empty DataFrame or raises a ValueError.
-    """
-    df: Optional[pd.DataFrame] = None
+def load_data(sheet_name: Optional[str] = None) -> pd.DataFrame:
+    """Load rankings data directly from GitHub (no uploads)."""
+    token = os.getenv("GITHUB_TOKEN", None)
+    try:
+        blob = fetch_github_bytes(GITHUB_OWNER, GITHUB_REPO, GITHUB_FILE_PATH, ref=GITHUB_REF, token=token)
+    except Exception as e:
+        raise ValueError(
+            "Could not download Excel from GitHub.
+"
+            f"Repo: {GITHUB_OWNER}/{GITHUB_REPO}
+Path: {GITHUB_FILE_PATH}
+Ref: {GITHUB_REF}
+"
+            f"Detail: {e}"
+        )
 
-    if os.path.exists(default_path):
-        df = read_excel_flexible(default_path, sheet_name=sheet_name)
-    else:
-        st.sidebar.markdown("### Data Source")
-        upl = st.sidebar.file_uploader("Upload your rankings workbook (.xlsm/.xlsx)", type=["xlsm", "xlsx", "xls"])
-        if upl is not None:
-            data = upl.read()
-            df = read_excel_flexible(io.BytesIO(data), sheet_name=sheet_name)
+    # Read the workbook bytes into a DataFrame
+    df = read_excel_flexible(io.BytesIO(blob), sheet_name=sheet_name)
 
-    if df is None or len(df) == 0:
-        raise ValueError("No data loaded. Provide '/mnt/data/CFB Rankings Upload.xlsm' or upload a workbook.")
+    if df is None or (isinstance(df, dict) and all((not isinstance(v, pd.DataFrame) or v.empty) for v in df.values())):
+        raise ValueError("The GitHub workbook has no non-empty sheets.")
 
-    # If user accidentally provided a dict of sheets, take the first sheet's frame
     if isinstance(df, dict):
-        # pick the first non-empty sheet
-        for name, sub in df.items():
+        # pick the first non-empty sheet deterministically by name
+        for name in sorted(df.keys()):
+            sub = df[name]
             if isinstance(sub, pd.DataFrame) and not sub.empty:
                 df = sub
                 break
-        if isinstance(df, dict):
-            raise ValueError("The uploaded workbook has no non-empty sheets.")
 
-    # Clean up obvious unnamed columns
     df = df.copy()
     df.columns = [str(c).strip() for c in df.columns]
-
     return df
 
 
@@ -123,7 +154,8 @@ except Exception:
 try:
     df = load_data()
 except Exception as e:
-    st.error(f"❌ {e}")
+    st.error("❌ Unable to load data from GitHub. Check the repo/name/path/ref and (if private) set GITHUB_TOKEN.")
+    st.exception(e)
     st.stop()
 
 # Build robust team + image series
