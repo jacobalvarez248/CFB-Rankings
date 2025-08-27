@@ -256,5 +256,49 @@ tbody td { padding-left: 2px !important; padding-right: 2px !important; }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("## 🏈 College Football Rankings")
-st.write(styled.to_html(escape=False), unsafe_allow_html=True)
+# Tabs for Rankings and Team Dashboards
+tab1, tab2 = st.tabs(["🏆 Rankings", "📊 Team Dashboards"])
+
+# ---------------------------------
+# 🏆 Tab 1: Rankings (existing logic goes here)
+# ---------------------------------
+with tab1:
+    st.markdown("## 🏈 College Football Rankings")
+
+    # Modify logo column to make each one clickable (adds deep link via query param)
+    df['Team'] = df.apply(
+        lambda row: f'<a href="#📊%20Team%20Dashboards" onclick="window.location.search=\'?selected_team={row.name}\'"><img src="{row["Image URL"]}" width="15"></a>'
+        if pd.notna(row["Image URL"]) else '',
+        axis=1
+    )
+
+    # Rebuild and show styled table
+    styled = view.style.format(fmt).hide(axis='index')
+    # (Add your styling and background gradient logic again here if needed)
+
+    st.write(styled.to_html(escape=False), unsafe_allow_html=True)
+
+# ---------------------------------
+# 📊 Tab 2: Team Dashboards (NEW)
+# ---------------------------------
+with tab2:
+    st.markdown("## 📊 Team Dashboards")
+
+    all_teams = df.index.tolist()
+
+    # Handle query param
+    from urllib.parse import unquote
+    query_params = st.query_params
+    preselect_team = unquote(query_params.get("selected_team", ""))
+
+    # Set up default selection from query param or first team
+    if 'selected_team' not in st.session_state:
+        st.session_state['selected_team'] = preselect_team if preselect_team in all_teams else all_teams[0]
+
+    selected_team = st.selectbox("Select a Team", options=all_teams, index=all_teams.index(st.session_state['selected_team']))
+    st.session_state['selected_team'] = selected_team
+
+    team_data = df.loc[[selected_team]]
+    st.markdown(f"### Dashboard for {selected_team}")
+    st.dataframe(team_data.T, use_container_width=True)
+
