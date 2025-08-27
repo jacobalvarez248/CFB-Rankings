@@ -97,7 +97,6 @@ existing = [c for c in df.columns if c not in first_cols]
 ordered = [c for c in first_cols if c in df.columns] + existing
 df = df[ordered]
 
-
 # ---------------------------------
 # Styling (no gradient) + number formats
 # ---------------------------------
@@ -105,14 +104,13 @@ numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
 # Base formatting: 1 decimal for most numerics
 fmt = {c: '{:.1f}' for c in numeric_cols}
 
-# Override special cases
-for rank_col in ['Pre. Rk.', 'Rk.']:
-    if rank_col in df.columns:
-        fmt[rank_col] = '{:.0f}'
-for wl_col in ['Wins', 'Losses']:
-    if wl_col in df.columns:
-        fmt[wl_col] = '{:.0f}'
+# Override special cases to whole numbers
+for col in ['Pre Rk', 'Rk', 'W', 'L']:
+    if col in df.columns:
+        fmt[col] = '{:.0f}'
+
 styled = df.style.format(fmt).hide(axis='index')
+
 
 # ---------------------------------
 # CSS: header bar color, centered headers, tight mobile layout
