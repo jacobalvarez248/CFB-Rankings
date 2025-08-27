@@ -3,7 +3,7 @@ import pandas as pd
 from matplotlib.colors import LinearSegmentedColormap
 from urllib.parse import unquote
 
-st.set_page_config(page_title="CFB Rankings", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="CFB Rankings", layout="wide", initial_sidebar_state="expanded")
 
 @st.cache_data
 def load_data():
@@ -58,13 +58,6 @@ df.rename(columns={
     "Conference Logo": "Conf"
 }, inplace=True)
 
-# Add clickable team logos with JS to switch tab and set query param
-df['Team'] = df.apply(
-    lambda row: f'''<img src="{logos_df.set_index('Team').at[row.name, 'Image URL']}" width="15" style="cursor:pointer" onclick="const url = new URL(window.location); url.searchParams.set('selected_team', '{row.name}'); window.location.href = url.href;">'''
-    if row.name in logos_df.set_index('Team').index else '',
-    axis=1
-)
-
 first_cols = ["Pre Rk", "Rk", "Team", "Conf"]
 existing = [c for c in df.columns if c not in first_cols]
 df = df[[c for c in first_cols if c in df.columns] + existing]
@@ -74,17 +67,20 @@ preselect_team = unquote(query_params.get("selected_team", ""))
 if 'selected_team' not in st.session_state:
     st.session_state['selected_team'] = preselect_team if preselect_team else df.index[0]
 
-tab1, tab2 = st.tabs(["\U0001F3C6 Rankings", "\U0001F4CA Team Dashboards"])
+# Sidebar tabs
+with st.sidebar:
+    selected_tab = st.radio("Navigation", ["🏆 Rankings", "📊 Team Dashboards"])
 
-with tab1:
-    with st.sidebar:
-        st.header("Filters & Sort")
-        team_query = st.text_input("Team contains", value="")
-        conf_options = sorted([c for c in df['Conf Name'].dropna().unique()])
-        conf_selected = st.multiselect("Conference", conf_options)
-        sortable_cols = [c for c in df.columns if c not in ['Team', 'Conf']] + ['Team Name', 'Conf Name']
-        primary_sort = st.selectbox("Sort by", options=sortable_cols, index=sortable_cols.index('Rk') if 'Rk' in sortable_cols else 0)
-        sort_ascending = st.checkbox("Ascending", value=True)
+if selected_tab == "🏆 Rankings":
+    st.markdown("## 🏈 College Football Rankings")
+
+    # Filters at the top
+    team_query = st.text_input("Team contains", value="")
+    conf_options = sorted([c for c in df['Conf Name'].dropna().unique()])
+    conf_selected = st.multiselect("Conference", conf_options)
+    sortable_cols = [c for c in df.columns if c not in ['Team', 'Conf']] + ['Team Name', 'Conf Name']
+    primary_sort = st.selectbox("Sort by", options=sortable_cols, index=sortable_cols.index('Rk') if 'Rk' in sortable_cols else 0)
+    sort_ascending = st.checkbox("Ascending", value=True)
 
     view = df.copy()
     if team_query:
@@ -100,6 +96,13 @@ with tab1:
 
     visible_cols = [c for c in view.columns if c != 'Conf Name']
     view = view[visible_cols]
+
+    # Make logos clickable using anchor
+    view['Team'] = view.apply(
+        lambda row: f'<a href="?selected_team={row.name}"><img src="{logos_df.set_index('Team').at[row.name, 'Image URL']}" width="15"></a>'
+        if row.name in logos_df.set_index('Team').index else '',
+        axis=1
+    )
 
     numeric_cols = [c for c in view.columns if pd.api.types.is_numeric_dtype(view[c])]
     fmt = {c: '{:.1f}' for c in numeric_cols}
@@ -162,7 +165,7 @@ with tab1:
 
     st.write(styled.to_html(escape=False), unsafe_allow_html=True)
 
-with tab2:
+elif selected_tab == "📊 Team Dashboards":
     st.markdown("## 📊 Team Dashboards")
     all_teams = df.index.tolist()
     if st.session_state['selected_team'] in all_teams:
