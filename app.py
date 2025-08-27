@@ -67,20 +67,20 @@ preselect_team = unquote(query_params.get("selected_team", ""))
 if 'selected_team' not in st.session_state:
     st.session_state['selected_team'] = preselect_team if preselect_team else df.index[0]
 
-# Sidebar tabs
-with st.sidebar:
-    selected_tab = st.radio("Navigation", ["🏆 Rankings", "📊 Team Dashboards"])
+# Tabs at the top
+tab1, tab2 = st.tabs(["🏆 Rankings", "📊 Team Dashboards"])
 
-if selected_tab == "🏆 Rankings":
+if tab1:
+    with st.sidebar:
+        st.header("Filters & Sort")
+        team_query = st.text_input("Team contains", value="")
+        conf_options = sorted([c for c in df['Conf Name'].dropna().unique()])
+        conf_selected = st.multiselect("Conference", conf_options)
+        sortable_cols = [c for c in df.columns if c not in ['Team', 'Conf']] + ['Team Name', 'Conf Name']
+        primary_sort = st.selectbox("Sort by", options=sortable_cols, index=sortable_cols.index('Rk') if 'Rk' in sortable_cols else 0)
+        sort_ascending = st.checkbox("Ascending", value=True)
+
     st.markdown("## 🏈 College Football Rankings")
-
-    # Filters at the top
-    team_query = st.text_input("Team contains", value="")
-    conf_options = sorted([c for c in df['Conf Name'].dropna().unique()])
-    conf_selected = st.multiselect("Conference", conf_options)
-    sortable_cols = [c for c in df.columns if c not in ['Team', 'Conf']] + ['Team Name', 'Conf Name']
-    primary_sort = st.selectbox("Sort by", options=sortable_cols, index=sortable_cols.index('Rk') if 'Rk' in sortable_cols else 0)
-    sort_ascending = st.checkbox("Ascending", value=True)
 
     view = df.copy()
     if team_query:
@@ -97,7 +97,6 @@ if selected_tab == "🏆 Rankings":
     visible_cols = [c for c in view.columns if c != 'Conf Name']
     view = view[visible_cols]
 
-    # Make logos clickable using anchor
     view['Team'] = view.apply(
         lambda row: f'<a href="?selected_team={row.name}"><img src="{logos_df.set_index('Team').at[row.name, 'Image URL']}" width="15"></a>'
         if row.name in logos_df.set_index('Team').index else '',
@@ -165,7 +164,7 @@ if selected_tab == "🏆 Rankings":
 
     st.write(styled.to_html(escape=False), unsafe_allow_html=True)
 
-elif selected_tab == "📊 Team Dashboards":
+if tab2:
     st.markdown("## 📊 Team Dashboards")
     all_teams = df.index.tolist()
     if st.session_state['selected_team'] in all_teams:
