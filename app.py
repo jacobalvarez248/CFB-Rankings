@@ -1,3 +1,19 @@
+# app.py — CFB Rankings with Team Dashboards cross‑tab navigation
+# ---------------------------------------------------------------
+# This is a self‑contained Streamlit app that:
+# 1) Loads your rankings data from an .xlsm file (local or uploaded)
+# 2) Renders a Rankings tab with clickable team logos
+# 3) Opens a Team Dashboards tab pre‑selected to the clicked team via query params
+# 4) Is robust to different column names (Team/School/etc.) and a missing Image URL column
+#
+# Drop this file into your app (or replace your main script) and run:
+#   streamlit run app.py
+#
+# Notes:
+# - By default, it reads "/mnt/data/CFB Rankings Upload.xlsm" if present.
+# - If not found, you can upload the workbook at runtime via the sidebar.
+# - The app expects at least one way to identify teams (a team column or index).
+
 from __future__ import annotations
 import os
 import io
@@ -72,6 +88,8 @@ def load_data(sheet_name: Optional[str] = None) -> pd.DataFrame:
         blob = fetch_github_bytes(GITHUB_OWNER, GITHUB_REPO, GITHUB_FILE_PATH, ref=GITHUB_REF, token=token)
     except Exception as e:
         raise ValueError(
+            (
+
             "Could not download Excel from GitHub.
 "
             f"Repo: {GITHUB_OWNER}/{GITHUB_REPO}
