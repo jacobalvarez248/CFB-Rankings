@@ -5,7 +5,7 @@ from matplotlib.colors import LinearSegmentedColormap
 # ---------------------------------
 # Page configuration
 # ---------------------------------
-st.set_page_config(page_title="CFB Rankings", layout="wide")
+st.set_page_config(page_title="CFB Rankings", layout="wide", initial_sidebar_state="collapsed")
 
 # ---------------------------------
 # Load Excel data
@@ -64,6 +64,12 @@ if 'Conference' in df.columns:
 else:
     df['Conference Logo'] = ''
 
+# Keep a plain-text conference name for filtering before we drop the text column
+if 'Conference' in df.columns:
+    df['Conf Name'] = df['Conference']
+else:
+    df['Conf Name'] = pd.NA
+
 # --- Drop unwanted columns ---
 df.drop(columns=[
     "Conference",                # drop text version, keep only logo
@@ -99,44 +105,73 @@ ordered = [c for c in first_cols if c in df.columns] + existing
 df = df[ordered]
 
 # ---------------------------------
+# Sidebar controls (filters + sorting)
+# ---------------------------------
+with st.sidebar:
+    st.header("Filters & Sort")
+
+    # Team substring search (uses the index, which you set to 'Team Name')
+    team_query = st.text_input("Team contains", value="")
+
+    # Conference multiselect (based on the preserved text column)
+    conf_options = sorted([c for c in df['Conf Name'].dropna().unique()])
+    conf_selected = st.multiselect("Conference", conf_options)
+
+    # Choose sort column (include text helpers for better UX)
+    sortable_cols = [c for c in df.columns if c not in ['Team', 'Conf']] + ['Team Name', 'Conf Name']
+    primary_sort = st.selectbox("Sort by", options=sortable_cols, index=sortable_cols.index('Rk') if 'Rk' in sortable_cols else 0)
+    sort_ascending = st.checkbox("Ascending", value=False)
+
+# Start from the working view
+view = df.copy()
+
+# Apply Team filter
+if team_query:
+    view = view[view.index.str.contains(team_query, case=False, na=False)]
+
+# Apply Conference filter
+if conf_selected:
+    view = view[view['Conf Name'].isin(conf_selected)]
+
+# Sorting: if user chose helper columns that aren't displayed (Team Name / Conf Name), they still work
+if primary_sort in view.columns:
+    view = view.sort_values(by=primary_sort, ascending=sort_ascending, kind="mergesort")
+elif primary_sort == 'Team Name':
+    view = view.sort_values(by=view.index.name, ascending=sort_ascending, kind="mergesort")
+elif primary_sort == 'Conf Name':
+    view = view.sort_values(by='Conf Name', ascending=sort_ascending, kind="mergesort")
+
+# We don't want to *display* helper columns; keep your original visible ordering
+visible_cols = [c for c in view.columns if c != 'Conf Name']
+view = view[visible_cols]
+
+# ---------------------------------
 # Styling (with gradients) + number formats
 # ---------------------------------
-numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+numeric_cols = [c for c in view.columns if pd.api.types.is_numeric_dtype(view[c])]
 
 # Base formatting: 1 decimal for most numerics
 fmt = {c: '{:.1f}' for c in numeric_cols}
 # Whole numbers for these
 for col in ['Pre Rk', 'Rk', 'W', 'L']:
-    if col in df.columns:
+    if col in view.columns:
         fmt[col] = '{:.0f}'
 
 # Build base styler
-styled = df.style.format(fmt).hide(axis='index')
+styled = view.style.format(fmt).hide(axis='index')
 
 # Colormaps
 dark_navy = '#002060'
 dark_green = '#006400'
-dark_red = '#8B0000'
+dark_gold = '#b8860b'
 
+from matplotlib.colors import LinearSegmentedColormap
 cmap_blue = LinearSegmentedColormap.from_list('white_to_darknavy', ['#ffffff', dark_navy])
 cmap_blue_r = cmap_blue.reversed()
-
 cmap_green = LinearSegmentedColormap.from_list('white_to_darkgreen', ['#ffffff', dark_green])
-dark_gold = '#b8860b'
 cmap_gold = LinearSegmentedColormap.from_list('darkgold_to_white', [dark_gold, '#ffffff'])
 
-# Apply “lower = darker gold”
-for col in ['Sched Diff']:
-    if col in df.columns:
-        styled = (
-            styled
-            .background_gradient(cmap=cmap_gold, subset=[col],
-                                 vmin=df[col].min(), vmax=df[col].max())
-            .apply(lambda s: text_contrast(s, invert=True), subset=[col])
-        )
-
-
-# Helper to set readable text color on dark backgrounds
+# Helper to keep text readable on dark backgrounds
 def text_contrast(series, invert=False):
     vmin = float(series.min(skipna=True))
     vmax = float(series.max(skipna=True))
@@ -146,43 +181,40 @@ def text_contrast(series, invert=False):
         norm = 1 - norm
     return ['color: white' if (x >= 0.6) else 'color: black' for x in norm.fillna(0)]
 
-# Apply “higher = darker navy”
+# Apply gradients (each column on its own scale, using view's min/max)
 for col in ['Pwr Rtg', 'Off Rtg']:
-    if col in df.columns:
+    if col in view.columns:
         styled = (
             styled
             .background_gradient(cmap=cmap_blue, subset=[col],
-                                 vmin=df[col].min(), vmax=df[col].max())
+                                 vmin=view[col].min(), vmax=view[col].max())
             .apply(text_contrast, subset=[col])
         )
 
-# Apply “higher = darker green”
 for col in ['Proj W', 'Proj Conf W']:
-    if col in df.columns:
+    if col in view.columns:
         styled = (
             styled
             .background_gradient(cmap=cmap_green, subset=[col],
-                                 vmin=df[col].min(), vmax=df[col].max())
+                                 vmin=view[col].min(), vmax=view[col].max())
             .apply(text_contrast, subset=[col])
         )
 
-# Apply “lower = darker navy” (inverse)
 for col in ['Def Rtg']:
-    if col in df.columns:
+    if col in view.columns:
         styled = (
             styled
             .background_gradient(cmap=cmap_blue_r, subset=[col],
-                                 vmin=df[col].min(), vmax=df[col].max())
+                                 vmin=view[col].min(), vmax=view[col].max())
             .apply(lambda s: text_contrast(s, invert=True), subset=[col])
         )
 
-# Apply “lower = darker red”
 for col in ['Sched Diff']:
-    if col in df.columns:
+    if col in view.columns:
         styled = (
             styled
             .background_gradient(cmap=cmap_gold, subset=[col],
-                                 vmin=df[col].min(), vmax=df[col].max())
+                                 vmin=view[col].min(), vmax=view[col].max())
             .apply(lambda s: text_contrast(s, invert=True), subset=[col])
         )
 
