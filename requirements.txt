@@ -1,7 +1,4 @@
 streamlit
 pandas
 openpyxl
-altair
-folium
-streamlit-folium
 matplotlib
