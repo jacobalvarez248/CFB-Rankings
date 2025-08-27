@@ -137,9 +137,9 @@ tbody td:nth-child(3),
 tbody td:nth-child(4) {
   text-align: center !important;
   vertical-align: middle !important;
-  width: 55px;
-  min-width: 55px;
-  max-width: 65px;
+  width: 30px;
+  min-width: 35px;
+  max-width: 45px;
   overflow: hidden;
 }
 
