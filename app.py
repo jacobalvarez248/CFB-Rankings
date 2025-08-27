@@ -63,20 +63,19 @@ if 'Conference' in df.columns:
 else:
     df['Conference Logo'] = ''
 
-# ---------------------------------
-# Drop & rename columns (per your spec)
-# ---------------------------------
-# Drop unwanted columns (text conference + misc)
+# --- Drop unwanted columns ---
 df.drop(columns=[
-    "Conference",                    # keep only the logo version
+    "Conference",                # drop text version, keep only logo
+    "Team",                      # drop team text, keep only logo
+    "Image URL",                 # raw logo URL not needed
     "Vegas Win Total",
     "Projected Overall Losses",
     "Projected Conference Losses",
-    "Schedule Difficulty Rank",
+    "Schedule Difficulty Rank",  # spelling-safe, drops if present
     "Column1", "Column3", "Column5"
 ], errors='ignore', inplace=True)
 
-# Rename headers to compact/mobile-friendly labels
+# --- Rename columns ---
 df.rename(columns={
     "Preseason Rank": "Pre. Rk.",
     "Current Rank": "Rk.",
@@ -92,17 +91,12 @@ df.rename(columns={
     "Schedule Difficulty": "Sched. Diff."
 }, inplace=True)
 
-# ---------------------------------
-# Reorder columns so first four are fixed: Pre. Rk., Rk., Team, Conference
-# ---------------------------------
-existing = list(df.columns)
-for must_first in ['Pre. Rk.', 'Rk.', 'Team', 'Conference']:
-    if must_first in existing:
-        existing.remove(must_first)
-ordered = ['Pre. Rk.', 'Rk.', 'Team', 'Conference'] + existing
-# keep only those that exist (protect if some were missing)
-ordered = [c for c in ordered if c in df.columns]
+# --- Reorder cleanly ---
+first_cols = ["Pre. Rk.", "Rk.", "Team", "Conference"]
+existing = [c for c in df.columns if c not in first_cols]
+ordered = [c for c in first_cols if c in df.columns] + existing
 df = df[ordered]
+
 
 # ---------------------------------
 # Styling (no gradient) + number formats
