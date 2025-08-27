@@ -70,32 +70,15 @@ if 'selected_team' not in st.session_state:
 
 # Tab auto-switcher: insert JS to scroll to Team Dashboards if selected_team is set
 if preselect_team:
-    components.html("""
-<script>
-window.addEventListener("load", () => {
-  const selectedTeam = new URLSearchParams(window.location.search).get("selected_team");
-  if (!selectedTeam) return;
-
-  function clickDashboardTab() {
-    const tabs = window.document.querySelectorAll("button[data-baseweb='tab']");
-    for (let tab of tabs) {
-      if (tab.innerText.includes("Team Dashboards")) {
-        tab.click();
-        break;
-      }
-    }
-  }
-
-  clickDashboardTab();
-  setTimeout(clickDashboardTab, 300);
-});
-</script>
-""", height=0)
+    
 
 # Tabs at the top
-tab1, tab2 = st.tabs(["🏆 Rankings", "📊 Team Dashboards"])
+query_params = st.query_params
+selected_team = query_params.get("selected_team", "")
+default_tab = "📊 Team Dashboards" if selected_team else "🏆 Rankings"
+tab_choice = st.radio("", ["🏆 Rankings", "📊 Team Dashboards"], horizontal=True, index=0 if default_tab == "🏆 Rankings" else 1)
 
-with tab1:
+if tab_choice == "🏆 Rankings":
     with st.sidebar:
         st.header("Filters & Sort")
         team_query = st.text_input("Team contains", value="")
@@ -189,7 +172,7 @@ with tab1:
 
     st.write(styled.to_html(escape=False), unsafe_allow_html=True)
 
-with tab2:
+if tab_choice == "📊 Team Dashboards":
     st.markdown("## 📊 Team Dashboards")
     all_teams = df.index.tolist()
     if st.session_state['selected_team'] in all_teams:
