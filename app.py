@@ -125,6 +125,8 @@ thead th {
   background-color: #002060 !important;
   color: #ffffff !important;
   font-weight: 500 !important;
+  font-size: 10px !important;   /* smaller header font */
+  padding: 2px 4px !important;  /* tighter header padding */
 }
 
 /* Team & Conference columns */
