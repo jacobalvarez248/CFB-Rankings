@@ -102,11 +102,16 @@ df = df[ordered]
 # Styling (no gradient) + number formats
 # ---------------------------------
 numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+# Base formatting: 1 decimal for most numerics
 fmt = {c: '{:.1f}' for c in numeric_cols}
+
+# Override special cases
 for rank_col in ['Pre. Rk.', 'Rk.']:
     if rank_col in df.columns:
         fmt[rank_col] = '{:.0f}'
-
+for wl_col in ['Wins', 'Losses']:
+    if wl_col in df.columns:
+        fmt[wl_col] = '{:.0f}'
 styled = df.style.format(fmt).hide(axis='index')
 
 # ---------------------------------
@@ -115,38 +120,36 @@ styled = df.style.format(fmt).hide(axis='index')
 st.markdown("""
 <style>
 .block-container { padding-left: .5rem !important; padding-right: .5rem !important; }
-table { width: 100% !important; table-layout: fixed; word-wrap: break-word; font-size: 13px; border-collapse: collapse; }
-td, th { padding: 6px !important; text-align: center !important; vertical-align: middle !important; }
+table { width: 100% !important; table-layout: fixed; word-wrap: break-word; font-size: 11px; border-collapse: collapse; }
+td, th { padding: 4px !important; text-align: center !important; vertical-align: middle !important; font-size: 11px; }
 
 thead th {
-  background-color: #002060 !important;  /* navy */
-  color: #ffffff !important;              /* white text */
-  font-weight: 700 !important;
+  background-color: #002060 !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  font-size: 12px;
 }
 
-/* Team & Conference columns are 3rd and 4th after reordering */
+/* Team & Conference columns */
 thead th:nth-child(3),
 thead th:nth-child(4),
 tbody td:nth-child(3),
 tbody td:nth-child(4) {
   text-align: center !important;
   vertical-align: middle !important;
-  width: 70px;
-  min-width: 60px;
-  max-width: 80px;
+  width: 65px;
+  min-width: 55px;
+  max-width: 75px;
   overflow: hidden;
 }
 
 /* center images */
 td img { display: block; margin: 0 auto; }
 
-/* small padding tweaks for phones */
-tbody td { padding-left: 4px !important; padding-right: 4px !important; }
+/* tighter spacing for phones */
+tbody td { padding-left: 2px !important; padding-right: 2px !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------------------------
-# Render
-# ---------------------------------
 st.markdown("## 🏈 College Football Rankings")
 st.write(styled.to_html(escape=False), unsafe_allow_html=True)
