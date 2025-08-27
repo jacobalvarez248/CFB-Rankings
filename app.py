@@ -31,7 +31,7 @@ columns_to_drop = [col for col in df.columns if col.endswith('.1') or col.endswi
 df.drop(columns=columns_to_drop, inplace=True)
 
 # Merge logo image
-df = df.merge(logos_df[['Team', 'Image URL']], on='Team', how='left', how='left')
+df = df.merge(logos_df[['Team', 'Image URL']], on='Team', how='left')
 df.drop(columns=['Column1', 'Column3', 'Column5'], errors='ignore', inplace=True)
 df['Current Rank'] = df['Current Rank'].astype('Int64')
 
