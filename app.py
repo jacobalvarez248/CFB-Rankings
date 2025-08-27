@@ -113,25 +113,29 @@ for col in ['Pre Rk', 'Rk', 'W', 'L']:
 # Build base styler
 styled = df.style.format(fmt).hide(axis='index')
 
-# Colormaps: white -> dark navy; and the reverse
+# Colormaps
 dark_navy = '#002060'
+dark_green = '#006400'
+dark_red = '#8B0000'
+
 cmap_blue = LinearSegmentedColormap.from_list('white_to_darknavy', ['#ffffff', dark_navy])
 cmap_blue_r = cmap_blue.reversed()
+
+cmap_green = LinearSegmentedColormap.from_list('white_to_darkgreen', ['#ffffff', dark_green])
+cmap_red = LinearSegmentedColormap.from_list('darkred_to_white', [dark_red, '#ffffff'])
 
 # Helper to set readable text color on dark backgrounds
 def text_contrast(series, invert=False):
     vmin = float(series.min(skipna=True))
     vmax = float(series.max(skipna=True))
     rng = (vmax - vmin) if vmax != vmin else 1.0
-    # normalize 0..1 where 1.0 corresponds to the darker end we care about
     norm = (series - vmin) / rng
     if invert:
         norm = 1 - norm
-    # Use white text when background is dark enough (≥ 0.6 of the scale)
     return ['color: white' if (x >= 0.6) else 'color: black' for x in norm.fillna(0)]
 
-# Apply “higher = darker” to these
-for col in ['Pwr Rtg', 'Off Rtg', 'Proj W', 'Proj Conf W']:
+# Apply “higher = darker navy”
+for col in ['Pwr Rtg', 'Off Rtg']:
     if col in df.columns:
         styled = (
             styled
@@ -140,12 +144,32 @@ for col in ['Pwr Rtg', 'Off Rtg', 'Proj W', 'Proj Conf W']:
             .apply(text_contrast, subset=[col])
         )
 
-# Apply “lower = darker” (inverse) to these
-for col in ['Def Rtg', 'Sched Diff']:
+# Apply “higher = darker green”
+for col in ['Proj W', 'Proj Conf W']:
+    if col in df.columns:
+        styled = (
+            styled
+            .background_gradient(cmap=cmap_green, subset=[col],
+                                 vmin=df[col].min(), vmax=df[col].max())
+            .apply(text_contrast, subset=[col])
+        )
+
+# Apply “lower = darker navy” (inverse)
+for col in ['Def Rtg']:
     if col in df.columns:
         styled = (
             styled
             .background_gradient(cmap=cmap_blue_r, subset=[col],
+                                 vmin=df[col].min(), vmax=df[col].max())
+            .apply(lambda s: text_contrast(s, invert=True), subset=[col])
+        )
+
+# Apply “lower = darker red”
+for col in ['Sched Diff']:
+    if col in df.columns:
+        styled = (
+            styled
+            .background_gradient(cmap=cmap_red, subset=[col],
                                  vmin=df[col].min(), vmax=df[col].max())
             .apply(lambda s: text_contrast(s, invert=True), subset=[col])
         )
