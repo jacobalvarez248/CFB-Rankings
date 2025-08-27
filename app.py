@@ -71,7 +71,7 @@ df.drop(columns=[
     "Vegas Win Total",
     "Projected Overall Losses",
     "Projected Conference Losses",
-    "Schedule Difficulty Rank",  # spelling-safe, drops if present
+    "Scheudle Difficulty Rank",  # spelling-safe, drops if present
     "Column1", "Column3", "Column5"
 ], errors='ignore', inplace=True)
 
@@ -148,5 +148,5 @@ tbody td { padding-left: 4px !important; padding-right: 4px !important; }
 # ---------------------------------
 # Render
 # ---------------------------------
-st.markdown("## 🏈 College Football Rankings (Mobile-Optimized)")
+st.markdown("## 🏈 College Football Rankings")
 st.write(styled.to_html(escape=False), unsafe_allow_html=True)
