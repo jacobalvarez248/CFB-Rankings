@@ -181,7 +181,7 @@ for col in ['Sched Diff']:
     if col in df.columns:
         styled = (
             styled
-            .background_gradient(cmap=cmap_red, subset=[col],
+            .background_gradient(cmap=cmap_gold, subset=[col],
                                  vmin=df[col].min(), vmax=df[col].max())
             .apply(lambda s: text_contrast(s, invert=True), subset=[col])
         )
