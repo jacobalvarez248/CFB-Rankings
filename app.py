@@ -211,8 +211,8 @@ tbody td:nth-child(4) {
   text-align: center !important;
   vertical-align: middle !important;
   width: 30px;
-  min-width: 35px;
-  max-width: 45px;
+  min-width: 55px;
+  max-width: 75px;
   overflow: hidden;
 }
 
