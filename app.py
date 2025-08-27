@@ -126,10 +126,10 @@ td, th { padding: 4px !important; text-align: center !important; vertical-align:
 thead th {
   background-color: #002060 !important;
   color: #ffffff !important;
-  font-weight: 700 !important;
-  font-size: 12px;
+  font-weight: 600 !important;
+  font-size: 11px;
   writing-mode: vertical-rl;   /* vertical text */
-  transform: rotate(180deg);   /* flip so it reads bottom-to-top */
+  transform: rotate(90deg);   /* flip so it reads bottom-to-top */
   white-space: nowrap;         /* prevent wrapping */
   height: 120px;               /* give headers more vertical space */
 }
