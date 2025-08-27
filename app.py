@@ -70,12 +70,12 @@ df.drop(columns=[
     "Team",                      # drop team text, keep only logo
     "Image URL",                 # raw logo URL not needed
     "Vegas Win Total",
+    "Projected Overall Wins",
     "Projected Overall Losses",
+    "Projected Conference Wins",
     "Projected Conference Losses",
     "Schedule Difficulty Rank",  # spelling-safe, drops if present
     "Column1", "Column3", "Column5"
-    "Projected Overall Wins",
-    "Projected Conference Wins",
 ], errors='ignore', inplace=True)
 
 # --- Rename columns ---
