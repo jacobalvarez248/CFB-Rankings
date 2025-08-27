@@ -38,7 +38,7 @@ with tab1:
     df['Logo'] = df.apply(make_clickable_logo, axis=1)
 
     # Prepare styled dataframe (numeric columns with gradient)
-    styled_df = df.drop(columns=['Image URL']).style \
+    styled_df = df.style \
         .format(precision=1) \
         .hide(axis="index") \
         .applymap(lambda v: 'background-color: #c6e2ff' if isinstance(v, (int, float)) else '', subset=df.select_dtypes(include='number').columns)
