@@ -24,16 +24,18 @@ df['Current Rank'] = df['Current Rank'].astype('Int64')
 # Create 'Logo' column from Image URL
 df['Logo'] = df['Image URL'].apply(lambda url: f'<img src="{url}" width="40">' if pd.notna(url) else '')
 
-# Reorder columns: Logo goes after 'Preseason Rank' and 'Current Rank'
+# Save 'Team' to a new column *before* removing it
+df['Team Name'] = df['Team']
+
+# Now reorder columns
 cols = df.columns.tolist()
-cols.remove('Team')
+cols.remove('Team')  # Now safe
 cols.remove('Image URL')
 cols.remove('Logo')
 ordered_cols = ['Preseason Rank', 'Current Rank', 'Logo'] + cols
 df = df[ordered_cols]
 
-# Use 'Team' as index for filtering (not shown in output)
-df['Team Name'] = df['Team']
+# Set index (not shown)
 df.set_index('Team Name', inplace=True)
 
 # ---------- Streamlit Styling ----------
