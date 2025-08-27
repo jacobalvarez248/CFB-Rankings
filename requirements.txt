@@ -4,3 +4,4 @@ openpyxl
 altair
 folium
 streamlit-folium
+matplotlib
