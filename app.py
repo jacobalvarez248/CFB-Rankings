@@ -80,7 +80,7 @@ df.rename(columns={
     "Preseason Rank": "Pre. Rk.",
     "Current Rank": "Rk.",
     "Team Logo": "Team",
-    "Conference Logo": "Conference",
+    "Conference Logo": "Conf.",
     "Power Rating": "Pwr. Rtg.",
     "Offensive Rating": "Off. Rtg.",
     "Defensive Rating": "Def. Rtg.",
