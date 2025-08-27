@@ -72,7 +72,7 @@ if 'selected_team' not in st.session_state:
 query_params = st.query_params
 selected_team = query_params.get("selected_team", "")
 default_tab = "📊 Team Dashboards" if selected_team else "🏆 Rankings"
-tab_choice = st.radio("", ["🏆 Rankings", "📊 Team Dashboards"], horizontal=True, index=0 if default_tab == "🏆 Rankings" else 1)("", ["🏆 Rankings", "📊 Team Dashboards"], horizontal=True, index=0 if default_tab == "🏆 Rankings" else 1)
+tab_choice = st.radio("", ["🏆 Rankings", "📊 Team Dashboards"], horizontal=True, index=0 if default_tab == "🏆 Rankings" else 1)
 
 if tab_choice == "🏆 Rankings":
     with st.sidebar:
