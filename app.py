@@ -77,18 +77,18 @@ df.drop(columns=[
 
 # --- Rename columns ---
 df.rename(columns={
-    "Preseason Rank": "Pre. Rk.",
-    "Current Rank": "Rk.",
+    "Preseason Rank": "Pre Rk",
+    "Current Rank": "Rk",
     "Team Logo": "Team",
-    "Conference Logo": "Conf.",
-    "Power Rating": "Pwr. Rtg.",
-    "Offensive Rating": "Off. Rtg.",
-    "Defensive Rating": "Def. Rtg.",
-    "Current Wins": "Wins",
-    "Current Losses": "Losses",
-    "Projected Overall Wins": "Proj. Wins",
-    "Projected Conference Wins": "Proj. Conf. Wins",
-    "Schedule Difficulty": "Sched. Diff."
+    "Conference Logo": "Conf",
+    "Power Rating": "Pwr Rtg",
+    "Offensive Rating": "Off Rtg",
+    "Defensive Rating": "Def Rtg",
+    "Current Wins": "W",
+    "Current Losses": "L",
+    "Projected Overall Wins": "Proj W",
+    "Projected Conference Wins": "Proj Conf W",
+    "Schedule Difficulty": "Sched Diff"
 }, inplace=True)
 
 # --- Reorder cleanly ---
@@ -126,12 +126,7 @@ td, th { padding: 4px !important; text-align: center !important; vertical-align:
 thead th {
   background-color: #002060 !important;
   color: #ffffff !important;
-  font-weight: 600 !important;
-  font-size: 11px;
-  writing-mode: vertical-rl;   /* vertical text */
-  transform: rotate(90deg);   /* flip so it reads bottom-to-top */
-  white-space: nowrap;         /* prevent wrapping */
-  height: 120px;               /* give headers more vertical space */
+  font-weight: 500 !important;
 }
 
 /* Team & Conference columns */
