@@ -72,7 +72,7 @@ df.drop(columns=[
     "Vegas Win Total",
     "Projected Overall Losses",
     "Projected Conference Losses",
-    "Scheudle Difficulty Rank",  # spelling-safe, drops if present
+    "Schedule Difficulty Rank",  # spelling-safe, drops if present
     "Column1", "Column3", "Column5"
 ], errors='ignore', inplace=True)
 
