@@ -101,9 +101,13 @@ if tab_choice == "🏆 Rankings":
     visible_cols = [c for c in view.columns if c != 'Conf Name']
     view = view[visible_cols]
 
+    from urllib.parse import quote  # make sure this import is at the top
+    ...
     view['Team'] = view.apply(
-        lambda row: f'<a href="?selected_team={row.name}#📊%20Team%20Dashboards"><img src="{logos_df.set_index('Team').at[row.name, 'Image URL']}" width="15"></a>'
-        if row.name in logos_df.set_index('Team').index else '',
+        lambda row: (
+            f'<a href="?selected_team={quote(row.name)}#📊%20Team%20Dashboards">'
+            f'<img src="{logos_df.set_index("Team").at[row.name, "Image URL"]}" width="15"></a>'
+        ) if row.name in logos_df.set_index('Team').index else '',
         axis=1
     )
 
