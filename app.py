@@ -192,7 +192,7 @@ if tab_choice == "📈 Metrics":
     with c2:
         metric_choice = st.selectbox(
             "Metric",
-            ["Yds/Game", "Yards/Play", "EPA/Play", "Success Rate", "Explosiveness"],
+            ["Yards/Game", "Yards/Play", "EPA/Play", "Success Rate", "Explosiveness"],
             key="metrics_metric"
         )
 
