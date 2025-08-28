@@ -10,12 +10,9 @@ st.set_page_config(page_title="CFB Rankings", layout="wide", initial_sidebar_sta
 def load_data():
     df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Expected Wins', header=1)
     logos_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Logos', header=1)
-    metrics_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Metrics', header=1)  # NEW
-    metrics_df.columns = metrics_df.columns.map(lambda c: str(c).strip())
+    return df, logos_df
 
-    return df, logos_df, metrics_df
-
-df, logos_df, metrics_df = load_data()
+df, logos_df = load_data()
 
 def deduplicate_columns(columns):
     seen = {}
@@ -180,239 +177,27 @@ if tab_choice == "🏆 Rankings":
     """, unsafe_allow_html=True)
 
     st.write(styled.to_html(escape=False), unsafe_allow_html=True)
-
-#-----------------------------------------------------------------METRICS COLUMN MAP--------------------------------------------------------------------------------------------------
-METRIC_GROUPS = {
-    ("Offense", "Yds/Game"): [
-        ("Off. Yds/Game", "Yds/G"),
-        ("Off. Pass Yds/Game", "Pass Yds/G"),
-        ("Off. Rush Yds/Game", "Rush Yds/G"),
-        ("Off. Points/Game", "Pts/G"),
-    ],
-    ("Defense", "Yds/Game"): [
-        ("Def. Yds/Game", "Yds/G"),
-        ("Def. Pass Yds/Game", "Pass Yds/G"),
-        ("Def. Rush Yds/Game", "Rush Yds/G"),
-        ("Def. Points/Game", "Pts/G"),
-    ],
-
-    ("Offense", "Yards/Play"): [
-        ("Off. Yds/Play", "YPP"),
-        ("Off. Pass Yds/Play", "Pass YPP"),
-        ("Off. Rush Yds/Play", "Rush YPP"),
-        ("Off. Points/Play", "Pts/Play"),
-    ],
-    ("Defense", "Yards/Play"): [
-        ("Def. Yds/Play", "YPP"),
-        ("Def. Pass Yds/Play", "Pass YPP"),
-        ("Def. Rush Yds/Play", "Rush YPP"),
-        ("Def. Points/Play", "Pts/Play"),
-    ],
-
-    ("Offense", "EPA/Play"): [
-        ("Off. Points/Scoring Opp.", "Pts/ScOpp"),
-        ("Off. EPA/Play", "EPA/P"),
-        ("Off. Pass EPA/Play", "Pass EPA/P"),
-        ("Off. Rush EPA/Play", "Rush EPA/P"),
-    ],
-    ("Defense", "EPA/Play"): [
-        ("Def. Points/Scoring Opp.", "Pts/ScOpp"),
-        ("Def. EPA/Play", "EPA/P"),
-        ("Def. Pass EPA/Play", "Pass EPA/P"),
-        ("Def. Rush EPA/Play", "Rush EPA/P"),
-    ],
-
-    ("Offense", "Success Rate"): [
-        ("Off. Success Rate", "SR"),
-        ("Off. Pass Success Rate", "Pass SR"),
-        ("Off. Rush Success Rate", "Rush SR"),
-    ],
-    ("Defense", "Success Rate"): [
-        ("Def. Success Rate", "SR"),
-        ("Def. Pass Success Rate", "Pass SR"),
-        ("Def. Rush Success Rate", "Rush SR"),
-    ],
-
-    # Note the single “s” in your sheet: “Explosivenes”
-    ("Offense", "Explosiveness"): [
-        ("Off. Explosiveness", "Expl"),
-        ("Off. Pass Explosivenes", "Pass Expl"),
-        ("Off. Rush Explosiveness", "Rush Expl"),
-    ],
-    ("Defense", "Explosiveness"): [
-        ("Def. Explosiveness", "Expl"),
-        ("Def. Pass Explosivenes", "Pass Expl"),
-        ("Def. Rush Explosiveness", "Rush Expl"),
-    ],
-}
-
-
-# The rating column to include right after the three fixed columns
-UNIT_RATING = {
-    "Offense": ("Offensive Rating", "Off Rtg"),
-    "Defense": ("Defensive Rating", "Def Rtg"),
-}
-
-#-------------------ANOTHER METRICS HELPER-----------------------
-import re
-
-def _keyify(x) -> str:
-    # normalize team names: "Ohio State", "OHIO STATE", "Ohio-State" -> "ohiostate"
-    return re.sub(r"[^a-z0-9]", "", str(x).lower().strip())
-
-def _norm(s: str) -> str:
-    # normalize metric names for matching: remove spaces/punct/case
-    return re.sub(r"[^a-z0-9]", "", str(s).lower().strip())
-
-def _detect_team_col(metrics_df: pd.DataFrame, base_index: pd.Index) -> str | None:
-    """Pick the column in a TALL sheet whose values overlap base team names the most."""
-    if metrics_df is None or metrics_df.empty:
-        return None
-    base_keys = set(pd.Index(base_index).map(_keyify))
-    best_col, best_overlap = None, 0
-    for col in metrics_df.columns:
-        if metrics_df[col].dtype == object or str(metrics_df[col].dtype) == "string":
-            keys = pd.Series(metrics_df[col]).dropna().map(_keyify)
-            overlap = len(set(keys) & base_keys)
-            if overlap > best_overlap:
-                best_col, best_overlap = col, overlap
-    return best_col
-
-def metrics_series_keyed(metrics_df: pd.DataFrame, value_name: str, base_index: pd.Index) -> pd.Series:
-    """
-    Return a numeric Series for the requested metric, indexed by canonical team key.
-    Works for BOTH:
-      - TALL sheets: columns = [Team/School/..., <metrics...>], rows = teams
-      - WIDE sheets: first column holds metric names, remaining columns are teams
-    Matching is robust: case-insensitive and ignores punctuation/spaces.
-    """
-    if metrics_df is None or metrics_df.empty:
-        return pd.Series(dtype="float64")
-
-    # ----------- TALL (metric is a column): do normalized lookup -----------
-    target = _norm(value_name)
-    col_norm_map = {_norm(c): c for c in metrics_df.columns}
-    tall_col = col_norm_map.get(target)
-    if tall_col is None:
-        # try contains-normalized (handles slight text differences)
-        for norm_col, orig in col_norm_map.items():
-            if target and target in norm_col:
-                tall_col = orig
-                break
-
-    if tall_col is not None:
-        team_col = _detect_team_col(metrics_df, base_index)
-        if team_col:
-            tmp = metrics_df[[team_col, tall_col]].dropna(subset=[team_col]).copy()
-            tmp["__key__"] = tmp[team_col].map(_keyify)
-            vals = (
-                tmp[tall_col]
-                .astype(str)
-                .str.replace("%", "", regex=False)
-                .str.replace(",", "", regex=False)
-            )
-            return pd.to_numeric(vals, errors="coerce").set_axis(tmp["__key__"].values, copy=False)
-
-    # ----------- WIDE (metric is a row in the first column): robust row match -----------
-    name_col_series = metrics_df.iloc[:, 0].astype(str)
-    norm_first = name_col_series.map(_norm)
-
-    # exact normalized match
-    mask = norm_first.eq(target)
-    if not mask.any() and target:
-        # fallback: contains
-        mask = norm_first.str.contains(target, na=False)
-
-    if mask.any():
-        row_vals = metrics_df.loc[mask].iloc[0, 1:]
-        team_headers = metrics_df.columns[1:]
-        out = (
-            row_vals.astype(str)
-            .str.replace("%", "", regex=False)
-            .str.replace(",", "", regex=False)
-        )
-        out = pd.to_numeric(out, errors="coerce")
-        out.index = pd.Index(team_headers).map(_keyify)
-        return out
-
-    # Fallback: nothing found
-    return pd.Series(dtype="float64")
-
+    
 #-----------------------------------------------------METRICS TAB------------------------------------------------
 if tab_choice == "📈 Metrics":
     st.markdown("## 📈 Metrics")
 
-    # Controls
     c1, c2 = st.columns(2)
     with c1:
-        unit_choice = st.selectbox("Unit", ["Offense", "Defense"], key="metrics_unit")
+        unit_choice = st.selectbox(
+            "Unit",
+            ["Offense", "Defense"],
+            key="metrics_unit"
+        )
     with c2:
-        metric_choice = st.selectbox("Metric", ["Yds/Game", "Yards/Play", "EPA/Play", "Success Rate", "Explosiveness"], key="metrics_metric")
+        metric_choice = st.selectbox(
+            "Metric",
+            ["Yards/Game", "Yards/Play", "EPA/Play", "Success Rate", "Explosiveness"],
+            key="metrics_metric"
+        )
 
-    # --- Build base table ---
-    logos_map = logos_df.set_index("Team")["Image URL"].to_dict()
-    base = df.copy()
-
-    # Ensure required columns exist
-    for col in ["Rk", "Pwr Rtg"]:
-        if col not in base.columns:
-            base[col] = pd.NA
-
-    # Logo-only Team column (small to fit phone)
-    base["Team"] = base.index.to_series().map(lambda name: f'<img src="{logos_map.get(name, "")}" width="18">' if logos_map.get(name) else "")
-
-    # Default sort by Pwr Rtg descending
-    base = base.sort_values(by="Pwr Rtg", ascending=False, kind="mergesort")
-
-    # Canonical key for joining to Metrics sheet
-    base_key = base.index.to_series().map(_keyify)
-
-    # --- Attach Off/Def rating from Metrics sheet (keyed, auto-detect team col) ---
-    rating_src, rating_short = UNIT_RATING[unit_choice]
-    rating_s = metrics_series_keyed(metrics_df, rating_src, base.index)
-    base[rating_short] = base_key.map(lambda k: rating_s.get(k, pd.NA))
-
-    # --- Determine dynamic metric columns ---
-    cols_spec = METRIC_GROUPS[(unit_choice, metric_choice)]  # [(source_col, short_header), ...]
-
-    # Helpers
-    def add_rank(series: pd.Series, offense: bool):
-        asc = not offense  # offense: higher better
-        return series, series.rank(ascending=asc, method="min")
-
-    def is_rate_header(h: str) -> bool:
-        return ("SR" in h) or ("Success" in h)
-
-    def fmt_value(val, rank, is_rate: bool):
-        if pd.isna(val):
-            return ""
-        out = f"{val*100:.1f}%" if (is_rate and 0 <= val <= 1) else (f"{val:.1f}%" if is_rate else f"{val:.1f}")
-        return f'{out} <span style="font-size:10px;opacity:.7">({int(rank)})</span>'
-
-    # Build dynamic metric columns using the keyed join
-    offense = (unit_choice == "Offense")
-    for src_col, short in cols_spec:
-        s = metrics_series_keyed(metrics_df, src_col, base.index)
-        aligned = pd.to_numeric(base_key.map(lambda k: s.get(k, None)), errors="coerce")   # <-- alignment line
-        vals, ranks = add_rank(aligned, offense=offense)
-        base[short] = [fmt_value(v, r, is_rate=is_rate_header(short)) for v, r in zip(vals, ranks)]
-
-    # Final visible columns: Rk | Team | Pwr Rtg | Off/Def Rtg | dynamic metrics…
-    final_cols = ["Rk", "Team", "Pwr Rtg", rating_short] + [short for _, short in cols_spec]
-    view = base[final_cols].copy()
-
-    # Styling
-    st.markdown("""
-    <style>
-    .block-container { padding-left: .5rem !important; padding-right: .5rem !important; }
-    table { width: 100% !important; table-layout: fixed; word-wrap: break-word; font-size: 11px; border-collapse: collapse; }
-    td, th { padding: 4px !important; text-align: center !important; vertical-align: middle !important; font-size: 11px; }
-    thead th { background-color: #002060 !important; color: #ffffff !important; font-weight: 500 !important; font-size: 10px !important; padding: 1px 3px !important; }
-    td img { display:block; margin:0 auto; }
-    </style>
-    """, unsafe_allow_html=True)
-
-    st.write(view.style.hide(axis="index").to_html(escape=False), unsafe_allow_html=True)
+    # Placeholder for now—wired up and ready for data logic next
+    st.info(f"Selected: **{unit_choice}** • **{metric_choice}**. Metric table/visuals coming next.")
 
 #---------------------------------------------------------Team Dashboards--------------------------------------------------------
 if tab_choice == "📊 Team Dashboards":
