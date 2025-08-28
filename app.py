@@ -11,6 +11,8 @@ def load_data():
     df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Expected Wins', header=1)
     logos_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Logos', header=1)
     metrics_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Metrics', header=1)  # NEW
+    metrics_df.columns = metrics_df.columns.map(lambda c: str(c).strip())
+
     return df, logos_df, metrics_df
 
 df, logos_df, metrics_df = load_data()
@@ -202,115 +204,106 @@ UNIT_RATING = {
     "Offense": ("Offensive Rating", "Off Rtg"),
     "Defense": ("Defensive Rating", "Def Rtg"),
 }
-def metrics_series(metrics_df, col_name, team_col="Team"):
+
+#-------------------ANOTHER METRICS HELPER-----------------------
+import re
+def _keyify(x) -> str:
+    # lower, strip, remove all non [a-z0-9] so “Ohio State”, “OHIO STATE ”, etc. match
+    return re.sub(r"[^a-z0-9]", "", str(x).lower().strip())
+
+def metrics_series(metrics_df, col_name, team_candidates=("Team","Team Name","School","TeamName","Team_Name")):
     """
-    Return a numeric Series indexed by team for the given column name.
-    If the column (or Team col) doesn't exist, return an empty Series.
+    Return a numeric Series indexed by a canonical team key (via _keyify).
+    If the column or team column is missing, return an empty float Series.
     """
-    if metrics_df is None or metrics_df.empty:
+    if metrics_df is None or metrics_df.empty or col_name not in metrics_df.columns:
         return pd.Series(dtype="float64")
 
-    if team_col not in metrics_df.columns or col_name not in metrics_df.columns:
+    team_col = next((c for c in team_candidates if c in metrics_df.columns), None)
+    if team_col is None:
         return pd.Series(dtype="float64")
 
-    s = (
-        metrics_df[[team_col, col_name]]
-        .dropna(subset=[team_col])
-        .rename(columns={team_col: "Team"})
-        .set_index("Team")[col_name]
-    )
+    tmp = metrics_df[[team_col, col_name]].dropna(subset=[team_col]).copy()
+    tmp["__key__"] = tmp[team_col].map(_keyify)
+    s = tmp.set_index("__key__")[col_name]
     return pd.to_numeric(s, errors="coerce")
 
 #-----------------------------------------------------METRICS TAB------------------------------------------------
-st.markdown("## 📈 Metrics")
+if tab_choice == "📈 Metrics":
+    st.markdown("## 📈 Metrics")
 
-# Controls (you already set these up—keeping them here for clarity)
-c1, c2 = st.columns(2)
-with c1:
-    unit_choice = st.selectbox("Unit", ["Offense", "Defense"], key="metrics_unit")
-with c2:
-    metric_choice = st.selectbox("Metric", ["Yds/Game", "Yards/Play", "EPA/Play", "Success Rate", "Explosiveness"], key="metrics_metric")
+    # Controls
+    c1, c2 = st.columns(2)
+    with c1:
+        unit_choice = st.selectbox("Unit", ["Offense", "Defense"], key="metrics_unit")
+    with c2:
+        metric_choice = st.selectbox("Metric", ["Yds/Game", "Yards/Play", "EPA/Play", "Success Rate", "Explosiveness"], key="metrics_metric")
 
-# --- Build base table from the Metrics Tab ---
+    # --- Build base table ---
+    logos_map = logos_df.set_index("Team")["Image URL"].to_dict()
+    base = df.copy()
 
-logos_map = logos_df.set_index("Team")["Image URL"].to_dict()
-base = df.copy()
+    # Ensure required columns exist
+    for col in ["Rk", "Pwr Rtg"]:
+        if col not in base.columns:
+            base[col] = pd.NA
 
-# Ensure required columns exist
-for col in ["Rk", "Pwr Rtg"]:
-    if col not in base.columns:
-        base[col] = pd.NA
+    # Logo-only Team column (small to fit phone)
+    base["Team"] = base.index.to_series().map(lambda name: f'<img src="{logos_map.get(name, "")}" width="18">' if logos_map.get(name) else "")
 
-# Logo-only Team column (small to fit phone)
-base["Team"] = base.index.to_series().map(lambda name: f'<img src="{logos_map.get(name, "")}" width="18">' if logos_map.get(name) else "")
+    # Default sort by Pwr Rtg descending
+    base = base.sort_values(by="Pwr Rtg", ascending=False, kind="mergesort")
 
-# Default sort by Pwr Rtg descending
-base = base.sort_values(by="Pwr Rtg", ascending=False, kind="mergesort")
+    # Canonical key for joining to Metrics sheet
+    base_key = base.index.to_series().map(_keyify)
 
-# --- Attach the rating column for the selected unit (SAFE) ---
-rating_src, rating_short = UNIT_RATING[unit_choice]
-rating_series = metrics_series(metrics_df, rating_src)  # use helper
-base[rating_short] = base.index.to_series().map(lambda t: rating_series.get(t, pd.NA))
+    # --- Attach Off/Def rating from Metrics sheet (SAFE, keyed) ---
+    rating_src, rating_short = UNIT_RATING[unit_choice]
+    rating_s = metrics_series(metrics_df, rating_src)  # keyed by _keyify
+    base[rating_short] = base_key.map(lambda k: rating_s.get(k, pd.NA))
 
-# --- Determine the metric columns to show next ---
-cols_spec = METRIC_GROUPS[(unit_choice, metric_choice)]  # list of (source_name_in_xlsx, short_header)
+    # --- Determine dynamic metric columns ---
+    cols_spec = METRIC_GROUPS[(unit_choice, metric_choice)]  # [(source_col, short_header), ...]
 
-# Helper: compute rank text to append in parens
-def add_rank(series: pd.Series, offense: bool) -> pd.Series:
-    # offense: rank descending (bigger→1); defense: ascending (smaller→1)
-    asc = not offense
-    # ranks among all valid teams (ignore NaN)
-    ranks = series.rank(ascending=asc, method="min")
-    return series, ranks
+    # Helpers
+    def add_rank(series: pd.Series, offense: bool):
+        asc = not offense  # offense: higher better
+        return series, series.rank(ascending=asc, method="min")
 
-# Helper: format a value with rank, picking decimals/percent rules
-def fmt_value(val, rank, is_rate: bool):
-    if pd.isna(val):
-        return ""
-    # metrics formatting: one decimal for most; percent for rates
-    if is_rate:
-        # if values are 0–1, show as %; else assume already in 0–100
-        out = f"{val*100:.1f}%" if 0 <= val <= 1 else f"{val:.1f}%"
-    else:
-        out = f"{val:.1f}"
-    # tiny rank in parens
-    return f'{out} <span style="font-size:10px;opacity:.7">({int(rank)})</span>'
+    def is_rate_header(h: str) -> bool:
+        return ("SR" in h) or ("Success" in h)
 
-# Which metrics are "rates" (show as %)
-def is_rate_header(h: str) -> bool:
-    return "SR" in h or "Success" in h
+    def fmt_value(val, rank, is_rate: bool):
+        if pd.isna(val):
+            return ""
+        out = f"{val*100:.1f}%" if (is_rate and 0 <= val <= 1) else (f"{val:.1f}%" if is_rate else f"{val:.1f}")
+        return f'{out} <span style="font-size:10px;opacity:.7">({int(rank)})</span>'
 
-# Build the dynamic metric columns
-offense = (unit_choice == "Offense")
-for src_col, short in cols_spec:
-    s = metrics_series(metrics_df, src_col)  # SAFE
-    aligned = pd.to_numeric(
-        base.index.to_series().map(lambda t: s.get(t, None)),
-        errors="coerce")
-    vals, ranks = add_rank(aligned, offense=offense)
-    base[short] = [fmt_value(v, r, is_rate=is_rate_header(short)) for v, r in zip(vals, ranks)]
+    # Build dynamic metric columns using the keyed join
+    offense = (unit_choice == "Offense")
+    for src_col, short in cols_spec:
+        s = metrics_series(metrics_df, src_col)  # keyed by _keyify
+        aligned = pd.to_numeric(base_key.map(lambda k: s.get(k, None)), errors="coerce")
+        vals, ranks = add_rank(aligned, offense=offense)
+        base[short] = [fmt_value(v, r, is_rate=is_rate_header(short)) for v, r in zip(vals, ranks)]
 
-# Select final visible columns:
-# Rk | Team(logo) | Pwr Rtg | Off/Def Rtg | (chosen metrics…)
-final_cols = ["Rk", "Team", "Pwr Rtg", rating_short] + [short for _, short in cols_spec]
-view = base[final_cols].copy()
+    # Final visible columns: Rk | Team | Pwr Rtg | Off/Def Rtg | dynamic metrics…
+    final_cols = ["Rk", "Team", "Pwr Rtg", rating_short] + [short for _, short in cols_spec]
+    view = base[final_cols].copy()
 
-# Styling: compact, no side scrolling
-st.markdown("""
-<style>
-.block-container { padding-left: .5rem !important; padding-right: .5rem !important; }
-table { width: 100% !important; table-layout: fixed; word-wrap: break-word; font-size: 11px; border-collapse: collapse; }
-td, th { padding: 4px !important; text-align: center !important; vertical-align: middle !important; font-size: 11px; }
-thead th { background-color: #002060 !important; color: #ffffff !important; font-weight: 500 !important; font-size: 10px !important; padding: 1px 3px !important; }
-td img { display:block; margin:0 auto; }
-</style>
-""", unsafe_allow_html=True)
+    # Styling
+    st.markdown("""
+    <style>
+    .block-container { padding-left: .5rem !important; padding-right: .5rem !important; }
+    table { width: 100% !important; table-layout: fixed; word-wrap: break-word; font-size: 11px; border-collapse: collapse; }
+    td, th { padding: 4px !important; text-align: center !important; vertical-align: middle !important; font-size: 11px; }
+    thead th { background-color: #002060 !important; color: #ffffff !important; font-weight: 500 !important; font-size: 10px !important; padding: 1px 3px !important; }
+    td img { display:block; margin:0 auto; }
+    </style>
+    """, unsafe_allow_html=True)
 
-# Render
-st.write(
-    view.style.hide(axis="index").to_html(escape=False),
-    unsafe_allow_html=True
-)
+    st.write(view.style.hide(axis="index").to_html(escape=False), unsafe_allow_html=True)
+
 
 #---------------------------------------------------------Team Dashboards--------------------------------------------------------
 if tab_choice == "📊 Team Dashboards":
