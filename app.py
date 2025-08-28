@@ -103,7 +103,6 @@ if tab_choice == "🏆 Rankings":
     view = view[visible_cols]
 
     from urllib.parse import quote  # make sure this import is at the top
-    ...
     view['Team'] = view.apply(
         lambda row: (
             f'<a href="?selected_team={quote(row.name)}#📊%20Team%20Dashboards">'
