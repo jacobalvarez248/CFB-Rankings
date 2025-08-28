@@ -278,6 +278,12 @@ def _detect_team_col(metrics_df: pd.DataFrame, base_index: pd.Index) -> str | No
                 best_col, best_overlap = col, overlap
     return best_col
 
+_detected = _detect_team_col(metrics_df, base.index)
+if _detected is None:
+    st.warning("Could not detect the team column in the Metrics sheet.")
+# else:
+#     st.caption(f"Detected team column in Metrics sheet: **{_detected}**")
+
 def metrics_series_keyed(metrics_df: pd.DataFrame, value_col: str, base_index: pd.Index) -> pd.Series:
     """
     Return a numeric Series of the requested metrics column, indexed by the canonical team key.
