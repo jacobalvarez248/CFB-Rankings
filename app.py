@@ -5,6 +5,16 @@ from urllib.parse import unquote
 import streamlit.components.v1 as components
 
 st.set_page_config(page_title="CFB Rankings", layout="wide", initial_sidebar_state="expanded")
+st.markdown("""
+<style>
+/* Hide elements that literally contain 'Ellipsis' */
+:has(*) div:has(> label:contains("Ellipsis")),
+div:contains("Ellipsis") {
+    display: none !important;
+    visibility: hidden !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 @st.cache_data
 def load_data():
