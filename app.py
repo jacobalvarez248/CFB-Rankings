@@ -255,9 +255,12 @@ UNIT_RATING = {
 
 #-------------------ANOTHER METRICS HELPER-----------------------
 import re
+
 def _keyify(x) -> str:
     # lower, strip, remove all non [a-z0-9] so “Ohio State”, “OHIO STATE ”, etc. match
     return re.sub(r"[^a-z0-9]", "", str(x).lower().strip())
+
+def metrics_series(metrics_df, col_name, team_candidates=("Team","Team Name","School","TeamName","Team_Name")):
     """
     Return a numeric Series indexed by a canonical team key (via _keyify).
     If the column or team column is missing, return an empty float Series.
@@ -306,7 +309,9 @@ if tab_choice == "📈 Metrics":
     # --- Attach Off/Def rating from Metrics sheet (SAFE, keyed) ---
     rating_src, rating_short = UNIT_RATING[unit_choice]
     rating_s = metrics_series(metrics_df, rating_src)  # keyed by _keyify
+    base_key = base.index.to_series().map(_keyify)     # make sure this line exists before lookups
     base[rating_short] = base_key.map(lambda k: rating_s.get(k, pd.NA))
+
 
     # --- Determine dynamic metric columns ---
     cols_spec = METRIC_GROUPS[(unit_choice, metric_choice)]  # [(source_col, short_header), ...]
