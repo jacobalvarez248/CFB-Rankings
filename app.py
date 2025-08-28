@@ -186,28 +186,43 @@ if tab_choice == "🏆 Rankings":
 if tab_choice == "📈 Metrics":
     st.markdown("## 📈 Metrics")
 
+    # Top selectors (same place as before)
     c1, c2 = st.columns(2)
     with c1:
         unit_choice = st.selectbox("Unit", ["Offense", "Defense"], key="metrics_unit")
     with c2:
         metric_choice = st.selectbox("Metric", ["Yards/Game", "Yards/Play", "EPA/Play", "Success Rate", "Explosiveness"], key="metrics_metric")
 
-    # Clean column names
+    # Clean column names (keeps merges safe)
     df.columns = df.columns.str.strip()
     metrics_df.columns = metrics_df.columns.str.strip()
 
-    # Merge Expected Wins data with Metrics data
-    core_cols = ['Team', 'Rk', 'Pwr Rtg', 'Off Rtg', 'Def Rtg']
-    df_core = df[[col for col in core_cols if col in df.columns]].copy()
-
-    # Now try to merge (after checking columns)
+    # Merge Expected Wins data with Metrics data (+ Conf Name for filtering)
+    core_cols = ['Team', 'Rk', 'Pwr Rtg', 'Off Rtg', 'Def Rtg', 'Conf Name']  # include Conf Name for sidebar filter
+    df_core = df[[c for c in core_cols if c in df.columns]].copy()
     merged_df = pd.merge(df_core, metrics_df, on='Team', how='inner')
 
-    # Sort BEFORE formatting to string
+    # Sort BEFORE formatting to keep numeric ordering stable
     if 'Pwr Rtg' in merged_df.columns:
         merged_df.sort_values("Pwr Rtg", ascending=False, inplace=True)
 
-    # Dropdown logic
+    # ---- Sidebar: Filters & Sort (mirrors Rankings) ----
+    with st.sidebar:
+        st.header("Filters & Sort")
+        team_query_m = st.text_input("Team contains", value="")
+        conf_options_m = sorted([c for c in merged_df['Conf Name'].dropna().unique()]) if 'Conf Name' in merged_df.columns else []
+        conf_selected_m = st.multiselect("Conference", conf_options_m)
+        sort_placeholder = st.empty()
+        asc_m = st.checkbox("Ascending", value=True, key="metrics_sort_asc")
+
+    # Apply filters *before* building the view
+    filt_df = merged_df.copy()
+    if team_query_m:
+        filt_df = filt_df[filt_df['Team'].str.contains(team_query_m, case=False, na=False)]
+    if 'Conf Name' in filt_df.columns and conf_selected_m:
+        filt_df = filt_df[filt_df['Conf Name'].isin(conf_selected_m)]
+
+    # Dropdown logic (unchanged options)
     metric_map = {
         "Yards/Game": {
             "Offense": ["Off. Yds/Game", "Off. Pass Yds/Game", "Off. Rush Yds/Game", "Off. Points/Game"],
@@ -231,20 +246,21 @@ if tab_choice == "📈 Metrics":
         },
     }
 
+    # Build columns to show
     base_cols = ["Rk", "Pwr Rtg"]
     extra = ["Off Rtg"] if unit_choice == "Offense" else ["Def Rtg"]
     metric_cols = metric_map[metric_choice][unit_choice]
     columns_to_show = base_cols + extra + metric_cols
 
-    # Filter columns safely
-    available_cols = [col for col in columns_to_show if col in merged_df.columns]
-    missing_cols = [col for col in columns_to_show if col not in merged_df.columns]
+    # Filter to available columns (warn if missing)
+    available_cols = [c for c in columns_to_show if c in filt_df.columns]
+    missing_cols = [c for c in columns_to_show if c not in filt_df.columns]
     if missing_cols:
         st.warning(f"Missing columns in data: {', '.join(missing_cols)}")
 
-    view = merged_df[available_cols].copy()
+    view = filt_df[available_cols].copy()
 
-    # Ranking logic
+    # --- Build ranks for each metric col (defense lower is better, offense higher is better)
     ranks = {}
     for col in metric_cols:
         if col not in view.columns:
@@ -254,28 +270,26 @@ if tab_choice == "📈 Metrics":
         else:
             ranks[col] = {v: i + 1 for i, v in enumerate(sorted(view[col].dropna(), reverse=True))}
 
+    # --- Cell formatter
+    # Success Rate = percentage; Explosiveness should NOT be a percentage
     def format_cell(col, val):
-        if pd.isna(val): 
+        if pd.isna(val):
             return ""
-        # "Rate" columns are percentages, but Explosiveness is NOT
         is_rate = ("Rate" in col) and ("Explosiveness" not in col)
-    
-        # one decimal for numbers, one decimal % for rates
         val_fmt = f"{val:.1%}" if is_rate else f"{val:.1f}"
         rk = ranks.get(col, {}).get(val, "")
         return f"{val_fmt} ({rk})" if rk else val_fmt
 
+    # Apply formatting with ranks to metric columns
     for col in metric_cols:
         if col in view.columns:
             view[col] = view[col].apply(lambda v: format_cell(col, v))
 
-    # Add logo only for Team
-    view.insert(1, 'Team', merged_df['Team'].map(
-        lambda team: f'<img src="{logos_df.set_index("Team").at[team, "Image URL"]}" width="20">' 
-        if team in logos_df.set_index("Team").index else team
-    ))
+    # Add logo next to Team
+    logos_map = logos_df.set_index("Team")["Image URL"]
+    view.insert(1, 'Team', filt_df['Team'].map(lambda t: f'<img src="{logos_map.get(t, "")}" width="20">' if t in logos_map.index else t))
 
-    # Rename for mobile display
+    # Short display names (remove % from Explosiveness headers)
     rename_dict = {
         "Rk": "Rk", "Pwr Rtg": "Pwr", "Off Rtg": "Off", "Def Rtg": "Def",
         "Off. Yds/Game": "Y/G", "Off. Pass Yds/Game": "P Y/G", "Off. Rush Yds/Game": "R Y/G", "Off. Points/Game": "Pts/G",
@@ -283,50 +297,49 @@ if tab_choice == "📈 Metrics":
         "Off. EPA/Play": "EPA", "Off. Pass EPA/Play": "P EPA", "Off. Rush EPA/Play": "R EPA", "Off. Points/Scoring Opp.": "Pts/ScOpp",
         "Off. Success Rate": "Succ%", "Off. Pass Success Rate": "P Succ%", "Off. Rush Success Rate": "R Succ%",
         "Off. Explosiveness": "Expl", "Off. Pass Explosivenes": "P Expl", "Off. Rush Explosiveness": "R Expl",
+
         "Def. Yds/Game": "Y/G", "Def. Pass Yds/Game": "P Y/G", "Def. Rush Yds/Game": "R Y/G", "Def. Points/Game": "Pts/G",
         "Def. Yds/Play": "Y/Pl", "Def. Pass Yds/Play": "P Y/Pl", "Def. Rush Yds/Play": "R Y/Pl", "Def. Points/Play": "Pts/Pl",
         "Def. EPA/Play": "EPA", "Def. Pass EPA/Play": "P EPA", "Def. Rush EPA/Play": "R EPA", "Def. Points/Scoring Opp.": "Pts/ScOpp",
         "Def. Success Rate": "Succ%", "Def. Pass Success Rate": "P Succ%", "Def. Rush Success Rate": "R Succ%",
-        "Def. Explosiveness": "Expl%", "Def. Pass Explosivenes": "P Expl%", "Def. Rush Explosiveness": "R Expl%",
+        "Def. Explosiveness": "Expl", "Def. Pass Explosivenes": "P Expl", "Def. Rush Explosiveness": "R Expl",
     }
     view.rename(columns=rename_dict, inplace=True)
 
-    # Format numeric columns
-    numeric_cols = ["Pwr", "Off", "Def"]
-    for col in numeric_cols:
+    # Format Ratings (Pwr/Off/Def) to one decimal
+    for col in ["Pwr", "Off", "Def"]:
         if col in view.columns:
             view[col] = view[col].apply(lambda x: f"{x:.1f}" if pd.notna(x) else "")
-    # Render table
+
+    # ---- Build Sort options AFTER rename so users sort by what they see
+    sortable_cols_m = [c for c in view.columns if c not in ['Team', 'Conf Name']]
+    with sort_placeholder:
+        sort_by_m = st.selectbox(
+            "Sort by",
+            options=sortable_cols_m,
+            index=(sortable_cols_m.index('Pwr') if 'Pwr' in sortable_cols_m else 0),
+            key="metrics_sort_by"
+        )
+
+    # Apply sort
+    if sort_by_m in view.columns:
+        view = view.sort_values(by=sort_by_m, ascending=asc_m, kind="mergesort")
+
+    # Hide Conf Name if present
+    visible_cols = [c for c in view.columns if c != 'Conf Name']
+    view = view[visible_cols]
+
+    # ---- Render table
     st.markdown("""
     <style>
-    table {
-      width: 100%;
-      table-layout: fixed;
-      font-size: 9px;
-    }
-    td, th {
-      padding: 3px;
-      text-align: center !important;
-      vertical-align: middle;
-      word-wrap: break-word;
-      font-size: 9px;
-    }
-    thead th {
-      background-color: #002060;
-      color: white;
-      font-weight: 600;
-      font-size: 9px;
-      text-align: center !important;
-      vertical-align: middle;
-    }
-    td img {
-      display: block;
-      margin: 0 auto;
-    }
+    table { width: 100%; table-layout: fixed; font-size: 9px; }
+    td, th { padding: 3px; text-align: center !important; vertical-align: middle; word-wrap: break-word; font-size: 9px; }
+    thead th { background-color: #002060; color: white; font-weight: 600; font-size: 9px; text-align: center !important; vertical-align: middle; }
+    td img { display: block; margin: 0 auto; }
     </style>
     """, unsafe_allow_html=True)
-
     st.write(view.to_html(escape=False, index=False), unsafe_allow_html=True)
+
 
 #---------------------------------------------------------Team Dashboards--------------------------------------------------------
 if tab_choice == "📊 Team Dashboards":
