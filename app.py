@@ -253,6 +253,15 @@ if tab_choice == "📈 Metrics":
     selected_short = metrics_map[metric_choice][unit_choice]
     selected_cols = [col_lookup[c] for c in selected_short if col_lookup[c] in df.columns]
 
+    # Debug: Show which metric columns are selected
+    st.write("🔎 selected_short (metric labels):", selected_short)
+    st.write("🔎 selected_cols (from df):", selected_cols)
+    st.write("🔎 All columns in df:", df.columns.tolist())
+    
+    # Optional: Show missing ones for clarity
+    missing_cols = [col_lookup[c] for c in selected_short if col_lookup[c] not in df.columns]
+    st.warning(f"⚠️ Missing from DataFrame: {missing_cols}")
+
     display_df = df[['Rk', 'Team', 'Pwr Rtg', rating_col] + selected_cols].copy()
     display_df.rename(columns={rating_col: rating_short}, inplace=True)
 
