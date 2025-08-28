@@ -183,8 +183,8 @@ if tab_choice == "🏆 Rankings":
     st.write(styled.to_html(escape=False), unsafe_allow_html=True)
 
 #-----------------------------------------------------METRICS TAB------------------------------------------------
-if tab_choice == "📈 Metrics":
-    st.markdown("## 📈 Metrics")
+if tab_choice == "\ud83d\udcc8 Metrics":
+    st.markdown("## \ud83d\udcc8 Metrics")
 
     c1, c2 = st.columns(2)
     with c1:
@@ -206,6 +206,8 @@ if tab_choice == "📈 Metrics":
     # Sort BEFORE formatting to string
     if 'Pwr Rtg' in merged_df.columns:
         merged_df.sort_values("Pwr Rtg", ascending=False, inplace=True)
+
+    merged_df.set_index('Team', inplace=True)
 
     # Dropdown logic
     metric_map = {
@@ -266,7 +268,7 @@ if tab_choice == "📈 Metrics":
             view[col] = view[col].apply(lambda v: format_cell(col, v))
 
     # Add logo only for Team
-    view.insert(1, 'Team', merged_df['Team'].map(
+    view.insert(1, 'Team', view.index.map(
         lambda team: f'<img src="{logos_df.set_index("Team").at[team, "Image URL"]}" width="20">' 
         if team in logos_df.set_index("Team").index else team
     ))
@@ -286,6 +288,11 @@ if tab_choice == "📈 Metrics":
         "Def. Explosiveness": "Expl%", "Def. Pass Explosivenes": "P Expl%", "Def. Rush Explosiveness": "R Expl%",
     }
     view.rename(columns=rename_dict, inplace=True)
+
+    # Round core rating columns to 1 decimal place
+    for col in ["Pwr", "Off", "Def"]:
+        if col in view.columns:
+            view[col] = view[col].apply(lambda x: f"{float(x):.1f}" if pd.notna(x) else "")
 
     # Render table
     st.markdown("""
@@ -318,6 +325,7 @@ if tab_choice == "📈 Metrics":
     """, unsafe_allow_html=True)
 
     st.write(view.to_html(escape=False, index=False), unsafe_allow_html=True)
+
 
 #---------------------------------------------------------Team Dashboards--------------------------------------------------------
 if tab_choice == "📊 Team Dashboards":
