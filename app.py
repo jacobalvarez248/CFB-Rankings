@@ -284,21 +284,26 @@ if tab_choice == "📈 Metrics":
         "Def. Explosiveness": "Expl%", "Def. Pass Explosivenes": "P Expl%", "Def. Rush Explosiveness": "R Expl%",
     }
     view.rename(columns=rename_dict, inplace=True)
+    
+    # Ensure all numeric values are formatted to 1 decimal point
+    for col in view.columns:
+        if view[col].dtype in [float, int] and not any(suffix in col for suffix in ['%', 'Rank']):
+            view[col] = view[col].apply(lambda x: f"{x:.1f}" if pd.notna(x) else "")
 
     # Sort by Power Rating
     if 'Pwr' in view.columns:
         view = view.sort_values("Pwr", ascending=False)
 
     # Render table
-    st.markdown("### 📊 Metric Table")
     st.markdown("""
     <style>
-    table { width: 100%; table-layout: fixed; font-size: 11px; }
-    td, th { padding: 4px; text-align: center; vertical-align: middle; word-wrap: break-word; }
-    thead th { background-color: #002060; color: white; font-weight: 600; font-size: 10px; }
+    table { width: 100%; table-layout: fixed; font-size: 10px; }
+    td, th { padding: 3px; text-align: center; vertical-align: middle; word-wrap: break-word; font-size: 10px; }
+    thead th { background-color: #002060; color: white; font-weight: 600; font-size: 9px; }
     td img { display: block; margin: 0 auto; }
     </style>
     """, unsafe_allow_html=True)
+
     st.write(view.to_html(escape=False, index=False), unsafe_allow_html=True)
 
 #---------------------------------------------------------Team Dashboards--------------------------------------------------------
