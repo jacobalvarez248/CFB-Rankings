@@ -225,7 +225,12 @@ if tab_choice == "📈 Metrics":
     metric_cols = metric_map[metric_choice][unit_choice]
     columns_to_show = base_cols + extra + metric_cols
 
-    view = df[columns_to_show].copy()
+    metrics_df.columns = metrics_df.columns.str.strip()
+    available_cols = [col for col in columns_to_show if col in metrics_df.columns]
+    missing_cols = [col for col in columns_to_show if col not in metrics_df.columns]
+    if missing_cols:
+        st.warning(f"Missing columns in data: {', '.join(missing_cols)}")
+    view = metrics_df[available_cols].copy()
     view = view.sort_values("Pwr Rtg", ascending=False)
 
     def format_cell(col, value, ranks):
