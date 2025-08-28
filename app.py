@@ -8,11 +8,12 @@ st.set_page_config(page_title="CFB Rankings", layout="wide", initial_sidebar_sta
 
 @st.cache_data
 def load_data():
-    df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Expected Wins', header=1)
+    expected_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Expected Wins', header=1)
     logos_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Logos', header=1)
-    return df, logos_df
+    metrics_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Metrics', header=1)
+    return expected_df, logos_df, metrics_df
 
-df, logos_df = load_data()
+df, logos_df, metrics_df = load_data()
 
 def deduplicate_columns(columns):
     seen = {}
