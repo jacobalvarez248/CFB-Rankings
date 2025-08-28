@@ -259,12 +259,14 @@ if tab_choice == "📈 Metrics":
     # Add ranks in parentheses
     def add_rank(series, inverse=False):
         ranked = series.rank(ascending=not inverse, method='min').astype("Int64")
-        return series.map('{:.1f}'.format if series.dtype.kind == 'f' else '{}') + ' (' + ranked.astype(str) + ')'
+        formatted = series.map('{:.1f}'.format if series.dtype.kind == 'f' else '{}')
+        return formatted + ranked.map(lambda r: f' ({r})' if pd.notna(r) else '')
 
     for col in selected_cols:
         if 'Rate' in col or 'Success' in col or '%' in col:
-            display_df[col] = (df[col] * 100).round(1).rank(ascending=False).astype(int)
-            display_df[col] = df[col].map(lambda x: f"{x*100:.1f}%") + ' (' + display_df[col].astype(str) + ')'
+            raw = df[col]
+            ranked = raw.rank(ascending=False, method='min').astype("Int64")
+            display_df[col] = raw.map(lambda x: f"{x*100:.1f}%") + ranked.map(lambda r: f" ({r})" if pd.notna(r) else '')
         else:
             inverse = unit_choice == 'Defense'  # Lower = better on D
             display_df[col] = add_rank(df[col], inverse=inverse)
