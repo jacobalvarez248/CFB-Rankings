@@ -287,6 +287,11 @@ if tab_choice == "📈 Metrics":
     }
     view.rename(columns=rename_dict, inplace=True)
 
+    # Format numeric columns
+    numeric_cols = ["Pwr", "Off", "Def"]
+    for col in numeric_cols:
+        if col in view.columns:
+            view[col] = view[col].apply(lambda x: f"{x:.1f}" if pd.notna(x) else "")
     # Render table
     st.markdown("""
     <style>
