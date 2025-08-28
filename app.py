@@ -11,6 +11,9 @@ def load_data():
     expected_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Expected Wins', header=1)
     logos_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Logos', header=1)
     metrics_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Metrics', header=1)
+    
+    # Fix column naming issue
+    metrics_df.reset_index(inplace=True)
     return expected_df, logos_df, metrics_df
 
 df, logos_df, metrics_df = load_data()
