@@ -257,24 +257,42 @@ UNIT_RATING = {
 import re
 
 def _keyify(x) -> str:
-    # lower, strip, remove all non [a-z0-9] so “Ohio State”, “OHIO STATE ”, etc. match
+    # lower, strip, remove non-alphanum so variations match: "Ohio State", "OHIO STATE ", "Ohio-State"
     return re.sub(r"[^a-z0-9]", "", str(x).lower().strip())
 
-def metrics_series(metrics_df, col_name, team_candidates=("Team","Team Name","School","TeamName","Team_Name")):
+def _detect_team_col(metrics_df: pd.DataFrame, base_index: pd.Index) -> str | None:
     """
-    Return a numeric Series indexed by a canonical team key (via _keyify).
-    If the column or team column is missing, return an empty float Series.
+    Pick the metrics_df column whose values best overlap with base team names.
+    Returns the column name or None if nothing sensible is found.
     """
-    if metrics_df is None or metrics_df.empty or col_name not in metrics_df.columns:
+    if metrics_df is None or metrics_df.empty:
+        return None
+    base_keys = set(pd.Index(base_index).map(_keyify))
+    best_col, best_overlap = None, 0
+    for col in metrics_df.columns:
+        # only consider textual columns
+        if metrics_df[col].dtype == object or str(metrics_df[col].dtype) == "string":
+            keys = pd.Series(metrics_df[col]).dropna().map(_keyify)
+            overlap = len(set(keys) & base_keys)
+            if overlap > best_overlap:
+                best_col, best_overlap = col, overlap
+    return best_col
+
+def metrics_series_keyed(metrics_df: pd.DataFrame, value_col: str, base_index: pd.Index) -> pd.Series:
+    """
+    Return a numeric Series of the requested metrics column, indexed by the canonical team key.
+    Auto-detects which column in metrics_df holds the team names.
+    """
+    if metrics_df is None or metrics_df.empty or value_col not in metrics_df.columns:
         return pd.Series(dtype="float64")
 
-    team_col = next((c for c in team_candidates if c in metrics_df.columns), None)
+    team_col = _detect_team_col(metrics_df, base_index)
     if team_col is None:
         return pd.Series(dtype="float64")
 
-    tmp = metrics_df[[team_col, col_name]].dropna(subset=[team_col]).copy()
+    tmp = metrics_df[[team_col, value_col]].dropna(subset=[team_col]).copy()
     tmp["__key__"] = tmp[team_col].map(_keyify)
-    s = tmp.set_index("__key__")[col_name]
+    s = tmp.set_index("__key__")[value_col]
     return pd.to_numeric(s, errors="coerce")
 
 #-----------------------------------------------------METRICS TAB------------------------------------------------
@@ -308,10 +326,8 @@ if tab_choice == "📈 Metrics":
 
     # --- Attach Off/Def rating from Metrics sheet (SAFE, keyed) ---
     rating_src, rating_short = UNIT_RATING[unit_choice]
-    rating_s = metrics_series(metrics_df, rating_src)  # keyed by _keyify
-    base_key = base.index.to_series().map(_keyify)     # make sure this line exists before lookups
+    rating_s = metrics_series_keyed(metrics_df, rating_src, base.index)  # keyed, auto-detected team column
     base[rating_short] = base_key.map(lambda k: rating_s.get(k, pd.NA))
-
 
     # --- Determine dynamic metric columns ---
     cols_spec = METRIC_GROUPS[(unit_choice, metric_choice)]  # [(source_col, short_header), ...]
@@ -333,7 +349,7 @@ if tab_choice == "📈 Metrics":
     # Build dynamic metric columns using the keyed join
     offense = (unit_choice == "Offense")
     for src_col, short in cols_spec:
-        s = metrics_series(metrics_df, src_col)  # keyed by _keyify
+        s = metrics_series_keyed(metrics_df, src_col, base.index)  # keyed, auto-detected team column
         aligned = pd.to_numeric(base_key.map(lambda k: s.get(k, None)), errors="coerce")
         vals, ranks = add_rank(aligned, offense=offense)
         base[short] = [fmt_value(v, r, is_rate=is_rate_header(short)) for v, r in zip(vals, ranks)]
