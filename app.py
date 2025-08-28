@@ -285,15 +285,13 @@ if tab_choice == "📈 Metrics":
     }
     view.rename(columns=rename_dict, inplace=True)
     
-    # Ensure all numeric values are formatted to 1 decimal point
-    for col in view.columns:
-        if view[col].dtype in [float, int] and not any(suffix in col for suffix in ['%', 'Rank']):
-            view[col] = view[col].apply(lambda x: f"{x:.1f}" if pd.notna(x) else "")
-
-    # Sort by Power Rating
-    if 'Pwr' in view.columns:
-        view = view.sort_values("Pwr", ascending=False)
-
+    # Sort BEFORE formatting to string
+    if 'Pwr Rtg' in merged_df.columns:
+        merged_df.sort_values("Pwr Rtg", ascending=False, inplace=True)
+    
+    # Now extract the view after sorting
+    view = merged_df[available_cols].copy()
+    
     # Render table
     st.markdown("""
     <style>
