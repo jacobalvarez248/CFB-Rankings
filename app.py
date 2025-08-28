@@ -11,14 +11,16 @@ def load_data():
     df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Metrics', header=1)
     logos_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Logos', header=1)
 
-    # Optional: show these to debug what the sheets contain
-    st.write("✅ Raw Metrics sheet columns:", df.columns.tolist())
-    st.write("✅ Raw Logos sheet columns:", logos_df.columns.tolist())
+    # Clean up column names
+    df.columns = df.columns.str.strip().str.replace('\n', ' ').str.replace(r'\s+', ' ', regex=True)
+    logos_df.columns = logos_df.columns.str.strip()
 
     return df, logos_df
 
 df, logos_df = load_data()
-df.columns = df.columns.str.strip().str.replace('\n', ' ').str.replace(r'\s+', ' ', regex=True)
+
+# Deduplicate and sanitize columns
+
 def deduplicate_columns(columns):
     seen = {}
     out = []
@@ -34,21 +36,29 @@ def deduplicate_columns(columns):
 df.columns = pd.Index([str(c) for c in deduplicate_columns(df.columns)])
 df = df.loc[:, ~df.columns.str.contains(r'\.(1|2|3|4)$')]
 
-st.write("df columns:", df.columns.tolist())
-st.write("logos_df columns:", logos_df.columns.tolist())
+# Ensure 'Team' column exists for merge
+if 'Team' not in df.columns and 'Team Name' in df.columns:
+    df.rename(columns={'Team Name': 'Team'}, inplace=True)
 
+# Merge team logos
 df = df.merge(logos_df[['Team', 'Image URL']], on='Team', how='left')
+
+# Standardize columns
 if 'Current Rank' in df.columns:
     df['Current Rank'] = df['Current Rank'].astype('Int64')
+
+# Set index and alias
 df['Team Name'] = df['Team']
 df.set_index('Team Name', inplace=True)
 
+# Conference logo map
 conf_logo_map = logos_df.set_index('Team')['Image URL'].to_dict()
 df['Conference Logo'] = df.get('Conference', pd.NA).apply(
     lambda conf: f'<img src="{conf_logo_map.get(conf, '')}" width="15">' if conf_logo_map.get(conf) else (conf if pd.notna(conf) else '')
 )
 df['Conf Name'] = df.get('Conference', pd.NA)
 
+# Drop unnecessary columns
 df.drop(columns=[
     "Conference", "Image URL", "Vegas Win Total",
     "Projected Overall Wins", "Projected Overall Losses",
@@ -56,6 +66,7 @@ df.drop(columns=[
     "Schedule Difficulty Rank", "Column1", "Column3", "Column5"
 ], errors='ignore', inplace=True)
 
+# Rename key columns
 df.rename(columns={
     "Preseason Rank": "Pre Rk",
     "Current Rank": "Rk",
@@ -68,28 +79,32 @@ df.rename(columns={
     "Conference Logo": "Conf"
 }, inplace=True)
 
+# Reorder key columns
 first_cols = ["Pre Rk", "Rk", "Team", "Conf"]
 existing = [c for c in df.columns if c not in first_cols]
 df = df[[c for c in first_cols if c in df.columns] + existing]
 
-st.write("✅ Cleaned df columns:", df.columns.tolist())
+# Show cleaned columns for debugging
+st.write("\u2705 Cleaned df columns:", df.columns.tolist())
 
+# Parse query string for selected team
 query_params = st.query_params
 preselect_team = unquote(query_params.get("selected_team", ""))
 if 'selected_team' not in st.session_state:
     st.session_state['selected_team'] = preselect_team if preselect_team else df.index[0]
 
-# Tab selector with auto-switch logic
-query_params = st.query_params
+# Tab selection logic
 selected_team = query_params.get("selected_team", "")
-default_tab = "📊 Team Dashboards" if selected_team else "🏆 Rankings"
+default_tab = "\ud83c\udfcb\ufe0f Team Dashboards" if selected_team else "\ud83c\udfc6 Rankings"
 
 tab_choice = st.radio(
-    " ", 
-    ["🏆 Rankings", "📈 Metrics", "📊 Team Dashboards"],
-    horizontal=True, 
-    label_visibility="collapsed", 
-    index=0 if default_tab == "🏆 Rankings" else (2 if default_tab == "📊 Team Dashboards" else 1))
+    " ",
+    ["\ud83c\udfc6 Rankings", "\ud83d\udcca Metrics", "\ud83c\udfcb\ufe0f Team Dashboards"],
+    horizontal=True,
+    label_visibility="collapsed",
+    index=0 if default_tab == "\ud83c\udfc6 Rankings" else (2 if default_tab == "\ud83c\udfcb\ufe0f Team Dashboards" else 1)
+)
+
 
 #-----------------------------------------------------RANKINGS TAB------------------------------------------------
 if tab_choice == "🏆 Rankings":
