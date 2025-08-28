@@ -337,7 +337,14 @@ if tab_choice == "📈 Metrics":
     
     styled = view.style.format(fmt)
     
-    # Render table
+    # ---- Render table with proper formatting and no index column
+    fmt = {c: "{:.1f}" for c in ["Pwr", "Off", "Def"] if c in view.columns}
+
+    # Reset index to remove the blank first column
+    view = view.reset_index(drop=True)
+
+    styled = view.style.format(fmt).hide(axis="index")
+
     st.markdown("""
     <style>
     table { width: 100%; table-layout: fixed; font-size: 9px; }
@@ -346,8 +353,9 @@ if tab_choice == "📈 Metrics":
     td img { display: block; margin: 0 auto; }
     </style>
     """, unsafe_allow_html=True)
-    
-    st.write(styled.to_html(escape=False, index=False), unsafe_allow_html=True)
+
+    st.write(styled.to_html(escape=False), unsafe_allow_html=True)
+
 
 
 #---------------------------------------------------------Team Dashboards--------------------------------------------------------
