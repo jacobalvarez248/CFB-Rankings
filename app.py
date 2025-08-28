@@ -299,11 +299,10 @@ if tab_choice == "📈 Metrics":
       width: 100%;
       table-layout: fixed;
       font-size: 9px;
-      text-align: center;
     }
     td, th {
       padding: 3px;
-      text-align: center;
+      text-align: center !important;
       vertical-align: middle;
       word-wrap: break-word;
       font-size: 9px;
@@ -313,7 +312,7 @@ if tab_choice == "📈 Metrics":
       color: white;
       font-weight: 600;
       font-size: 9px;
-      text-align: center;
+      text-align: center !important;
       vertical-align: middle;
     }
     td img {
@@ -322,8 +321,7 @@ if tab_choice == "📈 Metrics":
     }
     </style>
     """, unsafe_allow_html=True)
-
-
+    
     st.write(view.to_html(escape=False, index=False), unsafe_allow_html=True)
 
 #---------------------------------------------------------Team Dashboards--------------------------------------------------------
