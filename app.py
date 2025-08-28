@@ -241,15 +241,15 @@ if tab_choice == "📈 Metrics":
         'Pass %': 'Off. Pass Success Rate',
         'Rush %': 'Off. Rush Success Rate',
         'Expl': 'Off. Explosiveness',
-        'Pass Ex': 'Off. Pass Explosiveness',
+        'Pass Ex': 'Off. Pass Explosivenes',
         'Rush Ex': 'Off. Rush Explosiveness'
     }
 
     # Adjust for defense
     if unit_choice == 'Defense':
-        for k in col_lookup.copy():
+        for k in list(col_lookup.keys()):
             col_lookup[k] = col_lookup[k].replace("Off.", "Def.")
-
+    
     selected_short = metrics_map[metric_choice][unit_choice]
     selected_cols = [col_lookup[c] for c in selected_short if col_lookup[c] in df.columns]
 
@@ -257,21 +257,21 @@ if tab_choice == "📈 Metrics":
     display_df.rename(columns={rating_col: rating_short}, inplace=True)
 
     # Add ranks in parentheses
-    def add_rank(series, inverse=False):
+    def add_rank(series, inverse=False, is_percent=False):
         ranked = series.rank(ascending=not inverse, method='min').astype("Int64")
-        formatted = series.map('{:.1f}'.format if series.dtype.kind == 'f' else '{}')
-        return formatted + ranked.map(lambda r: f' ({r})' if pd.notna(r) else '')
+        if is_percent:
+            value_fmt = series.map(lambda x: f"{x*100:.1f}%" if pd.notna(x) else '')
+        else:
+            value_fmt = series.map(lambda x: f"{x:.1f}" if pd.notna(x) else '')
+        return value_fmt + ranked.map(lambda r: f" ({r})" if pd.notna(r) else '')
 
     for col in selected_cols:
         if 'Rate' in col or 'Success' in col or '%' in col:
-            raw = df[col]
-            ranked = raw.rank(ascending=False, method='min').astype("Int64")
-            display_df[col] = raw.map(lambda x: f"{x*100:.1f}%") + ranked.map(lambda r: f" ({r})" if pd.notna(r) else '')
+            display_df[col] = add_rank(df[col], inverse=(unit_choice == 'Defense'), is_percent=True)
         else:
-            inverse = unit_choice == 'Defense'  # Lower = better on D
-            display_df[col] = add_rank(df[col], inverse=inverse)
-
-    display_df[rating_short] = add_rank(df[rating_col], inverse=(unit_choice == 'Defense'))
+            display_df[col] = add_rank(df[col], inverse=(unit_choice == 'Defense'))
+    
+    display_df[rating_short] = df[rating_col].map(lambda x: f"{x:.1f}" if pd.notna(x) else '')
 
     # Replace team name with logo
     def team_logo_html(team):
