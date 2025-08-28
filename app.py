@@ -213,7 +213,7 @@ if tab_choice == "📈 Metrics":
         conf_options_m = sorted([c for c in merged_df['Conf Name'].dropna().unique()]) if 'Conf Name' in merged_df.columns else []
         conf_selected_m = st.multiselect("Conference", conf_options_m)
         sort_placeholder = st.empty()
-        asc_m = st.checkbox("Ascending", value=True, key="metrics_sort_asc")
+        asc_m = st.checkbox("Ascending", value=False, key="metrics_sort_asc")
 
     # Apply filters *before* building the view
     filt_df = merged_df.copy()
