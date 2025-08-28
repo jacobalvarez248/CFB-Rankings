@@ -307,7 +307,7 @@ if tab_choice == "📈 Metrics":
       text-align: center;
       vertical-align: middle;
       word-wrap: break-word;
-      font-size: 10px;
+      font-size: 9px;
     }
     thead th {
       background-color: #002060;
