@@ -278,12 +278,6 @@ def _detect_team_col(metrics_df: pd.DataFrame, base_index: pd.Index) -> str | No
                 best_col, best_overlap = col, overlap
     return best_col
 
-_detected = _detect_team_col(metrics_df, base.index)
-if _detected is None:
-    st.warning("Could not detect the team column in the Metrics sheet.")
-# else:
-#     st.caption(f"Detected team column in Metrics sheet: **{_detected}**")
-
 def metrics_series_keyed(metrics_df: pd.DataFrame, value_col: str, base_index: pd.Index) -> pd.Series:
     """
     Return a numeric Series of the requested metrics column, indexed by the canonical team key.
@@ -330,9 +324,13 @@ if tab_choice == "📈 Metrics":
     # Canonical key for joining to Metrics sheet
     base_key = base.index.to_series().map(_keyify)
 
-    # --- Attach Off/Def rating from Metrics sheet (SAFE, keyed) ---
+    # (Optional) debug: run AFTER base is defined
+    # _detected = _detect_team_col(metrics_df, base.index)
+    # st.caption(f"Detected team column in Metrics sheet: { _detected or 'none' }")
+
+    # --- Attach Off/Def rating from Metrics sheet (keyed, auto-detect team col) ---
     rating_src, rating_short = UNIT_RATING[unit_choice]
-    rating_s = metrics_series_keyed(metrics_df, rating_src, base.index)  # keyed, auto-detected team column
+    rating_s = metrics_series_keyed(metrics_df, rating_src, base.index)
     base[rating_short] = base_key.map(lambda k: rating_s.get(k, pd.NA))
 
     # --- Determine dynamic metric columns ---
@@ -355,8 +353,8 @@ if tab_choice == "📈 Metrics":
     # Build dynamic metric columns using the keyed join
     offense = (unit_choice == "Offense")
     for src_col, short in cols_spec:
-        s = metrics_series_keyed(metrics_df, src_col, base.index)  # keyed, auto-detected team column
-        aligned = pd.to_numeric(base_key.map(lambda k: s.get(k, None)), errors="coerce")
+        s = metrics_series_keyed(metrics_df, src_col, base.index)
+        aligned = pd.to_numeric(base_key.map(lambda k: s.get(k, None)), errors="coerce")   # <-- alignment line
         vals, ranks = add_rank(aligned, offense=offense)
         base[short] = [fmt_value(v, r, is_rate=is_rate_header(short)) for v, r in zip(vals, ranks)]
 
@@ -376,7 +374,6 @@ if tab_choice == "📈 Metrics":
     """, unsafe_allow_html=True)
 
     st.write(view.style.hide(axis="index").to_html(escape=False), unsafe_allow_html=True)
-
 
 #---------------------------------------------------------Team Dashboards--------------------------------------------------------
 if tab_choice == "📊 Team Dashboards":
