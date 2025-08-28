@@ -26,8 +26,9 @@ def deduplicate_columns(columns):
             out.append(c)
     return out
 
-df.columns = pd.Index(deduplicate_columns(df.columns))
+df.columns = pd.Index([str(c) for c in deduplicate_columns(df.columns)])
 df = df.loc[:, ~df.columns.str.contains(r'\.(1|2|3|4)$')]
+
 df = df.merge(logos_df[['Team', 'Image URL']], on='Team', how='left')
 if 'Current Rank' in df.columns:
     df['Current Rank'] = df['Current Rank'].astype('Int64')
