@@ -255,8 +255,12 @@ if tab_choice == "📈 Metrics":
             ranks[col] = {v: i + 1 for i, v in enumerate(sorted(view[col].dropna(), reverse=True))}
 
     def format_cell(col, val):
-        if pd.isna(val): return ""
-        is_rate = "Rate" in col or "Explosiveness" in col
+        if pd.isna(val): 
+            return ""
+        # "Rate" columns are percentages, but Explosiveness is NOT
+        is_rate = ("Rate" in col) and ("Explosiveness" not in col)
+    
+        # one decimal for numbers, one decimal % for rates
         val_fmt = f"{val:.1%}" if is_rate else f"{val:.1f}"
         rk = ranks.get(col, {}).get(val, "")
         return f"{val_fmt} ({rk})" if rk else val_fmt
@@ -278,7 +282,7 @@ if tab_choice == "📈 Metrics":
         "Off. Yds/Play": "Y/Pl", "Off. Pass Yds/Play": "P Y/Pl", "Off. Rush Yds/Play": "R Y/Pl", "Off. Points/Play": "Pts/Pl",
         "Off. EPA/Play": "EPA", "Off. Pass EPA/Play": "P EPA", "Off. Rush EPA/Play": "R EPA", "Off. Points/Scoring Opp.": "Pts/ScOpp",
         "Off. Success Rate": "Succ%", "Off. Pass Success Rate": "P Succ%", "Off. Rush Success Rate": "R Succ%",
-        "Off. Explosiveness": "Expl%", "Off. Pass Explosivenes": "P Expl%", "Off. Rush Explosiveness": "R Expl%",
+        "Off. Explosiveness": "Expl", "Off. Pass Explosivenes": "P Expl", "Off. Rush Explosiveness": "R Expl",
         "Def. Yds/Game": "Y/G", "Def. Pass Yds/Game": "P Y/G", "Def. Rush Yds/Game": "R Y/G", "Def. Points/Game": "Pts/G",
         "Def. Yds/Play": "Y/Pl", "Def. Pass Yds/Play": "P Y/Pl", "Def. Rush Yds/Play": "R Y/Pl", "Def. Points/Play": "Pts/Pl",
         "Def. EPA/Play": "EPA", "Def. Pass EPA/Play": "P EPA", "Def. Rush EPA/Play": "R EPA", "Def. Points/Scoring Opp.": "Pts/ScOpp",
