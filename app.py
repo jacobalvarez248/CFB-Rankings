@@ -40,8 +40,12 @@ df = df.loc[:, ~df.columns.str.contains(r'\.(1|2|3|4)$')]
 if 'Team' not in df.columns and 'Team Name' in df.columns:
     df.rename(columns={'Team Name': 'Team'}, inplace=True)
 
-# Merge team logos
+# Ensure 'Team' exists before merge
+if 'Team' not in df.columns:
+    df['Team'] = df.index
+
 df = df.merge(logos_df[['Team', 'Image URL']], on='Team', how='left')
+
 
 # Standardize columns
 if 'Current Rank' in df.columns:
