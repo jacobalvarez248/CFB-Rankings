@@ -177,10 +177,27 @@ if tab_choice == "🏆 Rankings":
     """, unsafe_allow_html=True)
 
     st.write(styled.to_html(escape=False), unsafe_allow_html=True)
-#----------------------------------------------------------METRICS TAB------------------------------------------------
+    
+#-----------------------------------------------------METRICS TAB------------------------------------------------
 if tab_choice == "📈 Metrics":
     st.markdown("## 📈 Metrics")
-    st.write("Metrics view coming soon...")
+
+    c1, c2 = st.columns(2)
+    with c1:
+        unit_choice = st.selectbox(
+            "Unit",
+            ["Offense", "Defense"],
+            key="metrics_unit"
+        )
+    with c2:
+        metric_choice = st.selectbox(
+            "Metric",
+            ["Yds/Game", "Yards/Play", "EPA/Play", "Success Rate", "Explosiveness"],
+            key="metrics_metric"
+        )
+
+    # Placeholder for now—wired up and ready for data logic next
+    st.info(f"Selected: **{unit_choice}** • **{metric_choice}**. Metric table/visuals coming next.")
 
 #---------------------------------------------------------Team Dashboards--------------------------------------------------------
 if tab_choice == "📊 Team Dashboards":
