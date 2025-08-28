@@ -178,17 +178,13 @@ if tab_choice == "🏆 Rankings":
 
     st.write(styled.to_html(escape=False), unsafe_allow_html=True)
     
-#-----------------------------------------------------METRICS TAB------------------------------------------------
+#--------------- METRICS TAB: Advanced Metrics Table --------------------------------------------------------#
 if tab_choice == "📈 Metrics":
     st.markdown("## 📈 Metrics")
 
     c1, c2 = st.columns(2)
     with c1:
-        unit_choice = st.selectbox(
-            "Unit",
-            ["Offense", "Defense"],
-            key="metrics_unit"
-        )
+        unit_choice = st.selectbox("Unit", ["Offense", "Defense"], key="metrics_unit")
     with c2:
         metric_choice = st.selectbox(
             "Metric",
@@ -196,8 +192,111 @@ if tab_choice == "📈 Metrics":
             key="metrics_metric"
         )
 
-    # Placeholder for now—wired up and ready for data logic next
-    st.info(f"Selected: **{unit_choice}** • **{metric_choice}**. Metric table/visuals coming next.")
+    # Always visible columns
+    base_cols = ['Rk', 'Team', 'Pwr Rtg']
+
+    # Rating column based on unit
+    rating_col = 'Off Rtg' if unit_choice == 'Offense' else 'Def Rtg'
+    rating_short = 'Off Rtg' if unit_choice == 'Offense' else 'Def Rtg'
+
+    # Metrics mapping
+    metrics_map = {
+        "Yards/Game": {
+            "Offense": ['Yds/G', 'Pass Y/G', 'Rush Y/G', 'Pts/G'],
+            "Defense": ['Yds/G', 'Pass Y/G', 'Rush Y/G', 'Pts/G']
+        },
+        "Yards/Play": {
+            "Offense": ['Yds/P', 'Pass Y/P', 'Rush Y/P', 'Pts/P'],
+            "Defense": ['Yds/P', 'Pass Y/P', 'Rush Y/P', 'Pts/P']
+        },
+        "EPA/Play": {
+            "Offense": ['ScOpp', 'EPA/P', 'Pass EPA', 'Rush EPA'],
+            "Defense": ['ScOpp', 'EPA/P', 'Pass EPA', 'Rush EPA']
+        },
+        "Success Rate": {
+            "Offense": ['Suc %', 'Pass %', 'Rush %'],
+            "Defense": ['Suc %', 'Pass %', 'Rush %']
+        },
+        "Explosiveness": {
+            "Offense": ['Expl', 'Pass Ex', 'Rush Ex'],
+            "Defense": ['Expl', 'Pass Ex', 'Rush Ex']
+        }
+    }
+
+    # Map back to real column names in df
+    col_lookup = {
+        'Yds/G': 'Off. Yds/Game',
+        'Pass Y/G': 'Off. Pass Yds/Game',
+        'Rush Y/G': 'Off. Rush Yds/Game',
+        'Pts/G': 'Off. Points/Game',
+        'Yds/P': 'Off. Yds/Play',
+        'Pass Y/P': 'Off. Pass Yds/Play',
+        'Rush Y/P': 'Off. Rush Yds/Play',
+        'Pts/P': 'Off. Points/Play',
+        'ScOpp': 'Off. Points/Scoring Opp.',
+        'EPA/P': 'Off. EPA/Play',
+        'Pass EPA': 'Off. Pass EPA/Play',
+        'Rush EPA': 'Off. Rush EPA/Play',
+        'Suc %': 'Off. Success Rate',
+        'Pass %': 'Off. Pass Success Rate',
+        'Rush %': 'Off. Rush Success Rate',
+        'Expl': 'Off. Explosiveness',
+        'Pass Ex': 'Off. Pass Explosiveness',
+        'Rush Ex': 'Off. Rush Explosiveness'
+    }
+
+    # Adjust for defense
+    if unit_choice == 'Defense':
+        for k in col_lookup.copy():
+            col_lookup[k] = col_lookup[k].replace("Off.", "Def.")
+
+    selected_short = metrics_map[metric_choice][unit_choice]
+    selected_cols = [col_lookup[c] for c in selected_short if col_lookup[c] in df.columns]
+
+    display_df = df[['Rk', 'Team', 'Pwr Rtg', rating_col] + selected_cols].copy()
+    display_df.rename(columns={rating_col: rating_short}, inplace=True)
+
+    # Add ranks in parentheses
+    def add_rank(series, inverse=False):
+        ranked = series.rank(ascending=not inverse, method='min').astype(int)
+        return series.map('{:.1f}'.format if series.dtype.kind == 'f' else '{}') + ' (' + ranked.astype(str) + ')'
+
+    for col in selected_cols:
+        if 'Rate' in col or 'Success' in col or '%' in col:
+            display_df[col] = (df[col] * 100).round(1).rank(ascending=False).astype(int)
+            display_df[col] = df[col].map(lambda x: f"{x*100:.1f}%") + ' (' + display_df[col].astype(str) + ')'
+        else:
+            inverse = unit_choice == 'Defense'  # Lower = better on D
+            display_df[col] = add_rank(df[col], inverse=inverse)
+
+    display_df[rating_short] = add_rank(df[rating_col], inverse=(unit_choice == 'Defense'))
+
+    # Replace team name with logo
+    def team_logo_html(team):
+        url = logos_df.set_index("Team").at[team, "Image URL"]
+        return f'<img src="{url}" width="22">' if url else team
+    display_df['Team'] = display_df.index.map(team_logo_html)
+
+    # Format columns
+    styled = display_df.style.hide(axis="index")
+
+    # Reduce font size and set tight layout
+    st.markdown("""
+    <style>
+    .block-container { padding-left: .5rem !important; padding-right: .5rem !important; }
+    table { width: 100% !important; table-layout: fixed; word-wrap: break-word; font-size: 11px; border-collapse: collapse; }
+    td, th { padding: 4px !important; text-align: center !important; vertical-align: middle !important; font-size: 10px; }
+    thead th {
+      background-color: #004080 !important;
+      color: #ffffff !important;
+      font-weight: 500 !important;
+      font-size: 9.5px !important;
+    }
+    td img { display: block; margin: 0 auto; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.write(styled.to_html(escape=False), unsafe_allow_html=True)
 
 #---------------------------------------------------------Team Dashboards--------------------------------------------------------
 if tab_choice == "📊 Team Dashboards":
