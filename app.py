@@ -13,7 +13,7 @@ def load_data():
     return df, logos_df
 
 df, logos_df = load_data()
-
+df.columns = df.columns.str.strip().str.replace('\n', ' ').str.replace(r'\s+', ' ', regex=True)
 def deduplicate_columns(columns):
     seen = {}
     out = []
