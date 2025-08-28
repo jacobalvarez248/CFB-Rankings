@@ -8,7 +8,7 @@ st.set_page_config(page_title="CFB Rankings", layout="wide", initial_sidebar_sta
 
 @st.cache_data
 def load_data():
-    df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Expected Wins', header=1)
+    df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Metrics', header=1)
     logos_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Logos', header=1)
     return df, logos_df
 
