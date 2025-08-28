@@ -5,16 +5,6 @@ from urllib.parse import unquote
 import streamlit.components.v1 as components
 
 st.set_page_config(page_title="CFB Rankings", layout="wide", initial_sidebar_state="expanded")
-st.markdown("""
-<style>
-/* Hide elements that literally contain 'Ellipsis' */
-:has(*) div:has(> label:contains("Ellipsis")),
-div:contains("Ellipsis") {
-    display: none !important;
-    visibility: hidden !important;
-}
-</style>
-""", unsafe_allow_html=True)
 
 @st.cache_data
 def load_data():
@@ -82,11 +72,10 @@ if 'selected_team' not in st.session_state:
 query_params = st.query_params
 selected_team = query_params.get("selected_team", "")
 default_tab = "📊 Team Dashboards" if selected_team else "🏆 Rankings"
-st.markdown("### ")  
-tab1, tab2 = st.tabs(["🏆 Rankings", "📊 Team Dashboards"])
+tab_choice = st.radio(" ", ["🏆 Rankings", "📊 Team Dashboards"], horizontal=True, label_visibility="collapsed", index=0 if default_tab == "🏆 Rankings" else 1)
 
 #-----------------------------------------------------RANKINGS TAB------------------------------------------------
-with tab1:
+if tab_choice == "🏆 Rankings":
     with st.sidebar:
         st.header("Filters & Sort")
         team_query = st.text_input("Team contains", value="")
@@ -184,7 +173,7 @@ with tab1:
 
     st.write(styled.to_html(escape=False), unsafe_allow_html=True)
 
-with tab2:
+if tab_choice == "📊 Team Dashboards":
     st.markdown("## 📊 Team Dashboards")
     all_teams = df.index.tolist()
     if st.session_state['selected_team'] in all_teams:
