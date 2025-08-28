@@ -299,7 +299,15 @@ if tab_choice == "📈 Metrics":
     <style>
     table { width: 100%; table-layout: fixed; font-size: 10px; }
     td, th { padding: 3px; text-align: center; vertical-align: middle; word-wrap: break-word; font-size: 10px; }
-    thead th { background-color: #002060; color: white; font-weight: 600; font-size: 9px; }
+    thead th {
+      background-color: #002060;
+      color: white;
+      font-weight: 600;
+      font-size: 9px;
+      text-align: center;
+      vertical-align: middle;
+    }
+
     td img { display: block; margin: 0 auto; }
     </style>
     """, unsafe_allow_html=True)
