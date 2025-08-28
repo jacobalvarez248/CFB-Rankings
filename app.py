@@ -196,8 +196,97 @@ if tab_choice == "📈 Metrics":
             key="metrics_metric"
         )
 
-    # Placeholder for now—wired up and ready for data logic next
-    st.info(f"Selected: **{unit_choice}** • **{metric_choice}**. Metric table/visuals coming next.")
+    metric_map = {
+        "Yards/Game": {
+            "Offense": ["Off. Yds/Game", "Off. Pass Yds/Game", "Off. Rush Yds/Game", "Off. Points/Game"],
+            "Defense": ["Def. Yds/Game", "Def. Pass Yds/Game", "Def. Rush Yds/Game", "Def. Points/Game"],
+        },
+        "Yards/Play": {
+            "Offense": ["Off. Yds/Play", "Off. Pass Yds/Play", "Off. Rush Yds/Play", "Off. Points/Play"],
+            "Defense": ["Def. Yds/Play", "Def. Pass Yds/Play", "Def. Rush Yds/Play", "Def. Points/Play"],
+        },
+        "EPA/Play": {
+            "Offense": ["Off. Points/Scoring Opp.", "Off. EPA/Play", "Off. Pass EPA/Play", "Off. Rush EPA/Play"],
+            "Defense": ["Def. Points/Scoring Opp.", "Def. EPA/Play", "Def. Pass EPA/Play", "Def. Rush EPA/Play"],
+        },
+        "Success Rate": {
+            "Offense": ["Off. Success Rate", "Off. Pass Success Rate", "Off. Rush Success Rate"],
+            "Defense": ["Def. Success Rate", "Def. Pass Success Rate", "Def. Rush Success Rate"],
+        },
+        "Explosiveness": {
+            "Offense": ["Off. Explosiveness", "Off. Pass Explosivenes", "Off. Rush Explosiveness"],
+            "Defense": ["Def. Explosiveness", "Def. Pass Explosivenes", "Def. Rush Explosiveness"],
+        },
+    }
+
+    base_cols = ["Rk", "Team", "Pwr Rtg"]
+    extra = ["Off Rtg"] if unit_choice == "Offense" else ["Def Rtg"]
+    metric_cols = metric_map[metric_choice][unit_choice]
+    columns_to_show = base_cols + extra + metric_cols
+
+    view = df[columns_to_show].copy()
+    view = view.sort_values("Pwr Rtg", ascending=False)
+
+    def format_cell(col, value, ranks):
+        if pd.isna(value): return ""
+        is_rate = "Rate" in col
+        rank = ranks.get(col, {}).get(value, "")
+        val_fmt = f"{value:.1%}" if is_rate else f"{value:.1f}"
+        return f"{val_fmt} ({rank})"
+
+    # Build ranking per column
+    ranks = {}
+    for col in metric_cols:
+        if "Def" in col:
+            ranks[col] = {v: i+1 for i, v in enumerate(sorted(view[col].dropna()))}
+        else:
+            ranks[col] = {v: i+1 for i, v in enumerate(sorted(view[col].dropna(), reverse=True))}
+
+    for col in metric_cols:
+        view[col] = view[col].apply(lambda v: format_cell(col, v, ranks))
+
+    # Replace team name with logo
+    view['Team'] = view.index.map(
+        lambda team: f'<img src="{logos_df.set_index("Team").at[team, "Image URL"]}" width="20">' if team in logos_df.set_index("Team").index else team
+    )
+
+    # Rename metric columns for space-saving
+    rename_dict = {
+        "Off. Yds/Game": "Y/G", "Off. Pass Yds/Game": "P Y/G", "Off. Rush Yds/Game": "R Y/G",
+        "Off. Points/Game": "Pts/G", "Off. Yds/Play": "Y/Play", "Off. Points/Play": "Pts/Play",
+        "Off. EPA/Play": "EPA", "Off. Success Rate": "Succ%", "Off. Explosiveness": "Expl%",
+        "Off. Pass Yds/Play": "P Y/Pl", "Off. Rush Yds/Play": "R Y/Pl",
+        "Off. Pass EPA/Play": "P EPA", "Off. Rush EPA/Play": "R EPA",
+        "Off. Pass Success Rate": "P Succ%", "Off. Rush Success Rate": "R Succ%",
+        "Off. Pass Explosivenes": "P Expl%", "Off. Rush Explosiveness": "R Expl%",
+        "Off. Points/Scoring Opp.": "Pts/ScOpp",
+        "Def. Yds/Game": "Y/G", "Def. Pass Yds/Game": "P Y/G", "Def. Rush Yds/Game": "R Y/G",
+        "Def. Points/Game": "Pts/G", "Def. Yds/Play": "Y/Play", "Def. Points/Play": "Pts/Play",
+        "Def. EPA/Play": "EPA", "Def. Success Rate": "Succ%", "Def. Explosiveness": "Expl%",
+        "Def. Pass Yds/Play": "P Y/Pl", "Def. Rush Yds/Play": "R Y/Pl",
+        "Def. Pass EPA/Play": "P EPA", "Def. Rush EPA/Play": "R EPA",
+        "Def. Pass Success Rate": "P Succ%", "Def. Rush Success Rate": "R Succ%",
+        "Def. Pass Explosivenes": "P Expl%", "Def. Rush Explosiveness": "R Expl%",
+        "Def. Points/Scoring Opp.": "Pts/ScOpp",
+        "Off Rtg": "Off Rtg", "Def Rtg": "Def Rtg"
+    }
+
+    view.rename(columns=rename_dict, inplace=True)
+
+    st.markdown("### 🔍 Metrics View")
+    st.markdown(
+        """
+        <style>
+        table { width: 100%; table-layout: fixed; font-size: 11px; }
+        td, th { padding: 4px; text-align: center; vertical-align: middle; word-wrap: break-word; }
+        thead th { background-color: #002060; color: white; font-weight: 600; font-size: 10px; }
+        td img { display: block; margin: 0 auto; }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+    st.write(view.to_html(escape=False, index=False), unsafe_allow_html=True)
+
 
 #---------------------------------------------------------Team Dashboards--------------------------------------------------------
 if tab_choice == "📊 Team Dashboards":
