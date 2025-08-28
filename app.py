@@ -300,7 +300,8 @@ if tab_choice == "📈 Metrics":
     table {
       width: 100%;
       table-layout: fixed;
-      font-size: 10px;
+      font-size: 9px;
+      text-align: center;
     }
     td, th {
       padding: 3px;
