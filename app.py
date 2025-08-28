@@ -329,7 +329,15 @@ if tab_choice == "📈 Metrics":
     visible_cols = [c for c in view.columns if c != 'Conf Name']
     view = view[visible_cols]
 
-    # ---- Render table
+    # Format display for Pwr/Off/Def as one decimal (without changing dtype)
+    fmt = {}
+    for col in ["Pwr", "Off", "Def"]:
+        if col in view.columns:
+            fmt[col] = "{:.1f}"
+    
+    styled = view.style.format(fmt)
+    
+    # Render table
     st.markdown("""
     <style>
     table { width: 100%; table-layout: fixed; font-size: 9px; }
@@ -338,7 +346,8 @@ if tab_choice == "📈 Metrics":
     td img { display: block; margin: 0 auto; }
     </style>
     """, unsafe_allow_html=True)
-    st.write(view.to_html(escape=False, index=False), unsafe_allow_html=True)
+    
+    st.write(styled.to_html(escape=False, index=False), unsafe_allow_html=True)
 
 
 #---------------------------------------------------------Team Dashboards--------------------------------------------------------
