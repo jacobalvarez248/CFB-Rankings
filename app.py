@@ -73,16 +73,10 @@ query_params = st.query_params
 selected_team = query_params.get("selected_team", "")
 default_tab = "📊 Team Dashboards" if selected_team else "🏆 Rankings"
 st.markdown("### ")  
-tab_choice = st.radio(
-    " ", 
-    ["🏆 Rankings", "📊 Team Dashboards"], 
-    horizontal=True, 
-    label_visibility="hidden", 
-    index=0 if default_tab == "🏆 Rankings" else 1
-)
+tab1, tab2 = st.tabs(["🏆 Rankings", "📊 Team Dashboards"])
 
 #-----------------------------------------------------RANKINGS TAB------------------------------------------------
-if tab_choice == "🏆 Rankings":
+with tab1:
     with st.sidebar:
         st.header("Filters & Sort")
         team_query = st.text_input("Team contains", value="")
@@ -180,7 +174,7 @@ if tab_choice == "🏆 Rankings":
 
     st.write(styled.to_html(escape=False), unsafe_allow_html=True)
 
-if tab_choice == "📊 Team Dashboards":
+with tab2:
     st.markdown("## 📊 Team Dashboards")
     all_teams = df.index.tolist()
     if st.session_state['selected_team'] in all_teams:
