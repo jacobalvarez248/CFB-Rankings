@@ -183,8 +183,8 @@ if tab_choice == "🏆 Rankings":
     st.write(styled.to_html(escape=False), unsafe_allow_html=True)
 
 #-----------------------------------------------------METRICS TAB------------------------------------------------
-if tab_choice == "\ud83d\udcc8 Metrics":
-    st.markdown("## \ud83d\udcc8 Metrics")
+if tab_choice == "Metrics":
+    st.markdown("Metrics")
 
     c1, c2 = st.columns(2)
     with c1:
@@ -325,7 +325,6 @@ if tab_choice == "\ud83d\udcc8 Metrics":
     """, unsafe_allow_html=True)
 
     st.write(view.to_html(escape=False, index=False), unsafe_allow_html=True)
-
 
 #---------------------------------------------------------Team Dashboards--------------------------------------------------------
 if tab_choice == "📊 Team Dashboards":
