@@ -63,6 +63,8 @@ first_cols = ["Pre Rk", "Rk", "Team", "Conf"]
 existing = [c for c in df.columns if c not in first_cols]
 df = df[[c for c in first_cols if c in df.columns] + existing]
 
+st.write("✅ Cleaned df columns:", df.columns.tolist())
+
 query_params = st.query_params
 preselect_team = unquote(query_params.get("selected_team", ""))
 if 'selected_team' not in st.session_state:
