@@ -284,7 +284,9 @@ def is_rate_header(h: str) -> bool:
 offense = (unit_choice == "Offense")
 for src_col, short in cols_spec:
     s = metrics_series(metrics_df, src_col)  # SAFE
-    aligned = base.index.to_series().map(lambda t: s.get(t, pd.NA)).astype("float64")
+    aligned = pd.to_numeric(
+        base.index.to_series().map(lambda t: s.get(t, None)),
+        errors="coerce")
     vals, ranks = add_rank(aligned, offense=offense)
     base[short] = [fmt_value(v, r, is_rate=is_rate_header(short)) for v, r in zip(vals, ranks)]
 
