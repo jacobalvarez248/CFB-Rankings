@@ -297,8 +297,18 @@ if tab_choice == "📈 Metrics":
     # Render table
     st.markdown("""
     <style>
-    table { width: 100%; table-layout: fixed; font-size: 10px; }
-    td, th { padding: 3px; text-align: center; vertical-align: middle; word-wrap: break-word; font-size: 10px; }
+    table {
+      width: 100%;
+      table-layout: fixed;
+      font-size: 10px;
+    }
+    td, th {
+      padding: 3px;
+      text-align: center;
+      vertical-align: middle;
+      word-wrap: break-word;
+      font-size: 10px;
+    }
     thead th {
       background-color: #002060;
       color: white;
@@ -307,10 +317,13 @@ if tab_choice == "📈 Metrics":
       text-align: center;
       vertical-align: middle;
     }
-
-    td img { display: block; margin: 0 auto; }
+    td img {
+      display: block;
+      margin: 0 auto;
+    }
     </style>
     """, unsafe_allow_html=True)
+
 
     st.write(view.to_html(escape=False, index=False), unsafe_allow_html=True)
 
