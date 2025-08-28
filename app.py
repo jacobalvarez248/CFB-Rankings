@@ -10,7 +10,7 @@ st.set_page_config(page_title="CFB Rankings", layout="wide", initial_sidebar_sta
 def load_data():
     df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Expected Wins', header=1)
     logos_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Logos', header=1)
-    metrics_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Metrics Tab', header=1)  # NEW
+    metrics_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Metrics', header=1)  # NEW
     return df, logos_df, metrics_df
 
 df, logos_df, metrics_df = load_data()
@@ -214,9 +214,7 @@ with c2:
     metric_choice = st.selectbox("Metric", ["Yds/Game", "Yards/Play", "EPA/Play", "Success Rate", "Explosiveness"], key="metrics_metric")
 
 # --- Build base table from the Metrics Tab ---
-# Start with the three fixed columns from your main df:
-# Rk, Team (logo-only), Pwr Rtg (sorted descending by default)
-# Re-use your logos_df to render the tiny team logo like Rankings. :contentReference[oaicite:2]{index=2}
+
 logos_map = logos_df.set_index("Team")["Image URL"].to_dict()
 base = df.copy()
 
