@@ -257,9 +257,11 @@ UNIT_RATING = {
 import re
 
 def _keyify(x) -> str:
+    # normalize names so "Ohio State", "OHIO STATE", "Ohio-State" all match
     return re.sub(r"[^a-z0-9]", "", str(x).lower().strip())
 
 def _detect_team_col(metrics_df: pd.DataFrame, base_index: pd.Index) -> str | None:
+    """Pick the column in a TALL sheet whose values overlap base team names the most."""
     if metrics_df is None or metrics_df.empty:
         return None
     base_keys = set(pd.Index(base_index).map(_keyify))
@@ -272,16 +274,41 @@ def _detect_team_col(metrics_df: pd.DataFrame, base_index: pd.Index) -> str | No
                 best_col, best_overlap = col, overlap
     return best_col
 
-def metrics_series_keyed(metrics_df: pd.DataFrame, value_col: str, base_index: pd.Index) -> pd.Series:
-    if metrics_df is None or metrics_df.empty or value_col not in metrics_df.columns:
+def metrics_series_keyed(metrics_df: pd.DataFrame, value_name: str, base_index: pd.Index) -> pd.Series:
+    """
+    Return a numeric Series for the requested metric, indexed by canonical team key.
+    Works for BOTH:
+      - TALL sheets: columns = [Team/School/..., <metrics...>], rows = teams
+      - WIDE sheets: first column = metric names, remaining columns = teams
+    """
+    if metrics_df is None or metrics_df.empty:
         return pd.Series(dtype="float64")
-    team_col = _detect_team_col(metrics_df, base_index)
-    if team_col is None:
-        return pd.Series(dtype="float64")
-    tmp = metrics_df[[team_col, value_col]].dropna(subset=[team_col]).copy()
-    tmp["__key__"] = tmp[team_col].map(_keyify)
-    s = tmp.set_index("__key__")[value_col]
-    return pd.to_numeric(s, errors="coerce")
+
+    # ---------- Case 1: TALL (metric is a column) ----------
+    if value_name in metrics_df.columns:
+        team_col = _detect_team_col(metrics_df, base_index)
+        if team_col:
+            tmp = metrics_df[[team_col, value_name]].dropna(subset=[team_col]).copy()
+            tmp["__key__"] = tmp[team_col].map(_keyify)
+            vals = pd.to_numeric(
+                tmp[value_name].astype(str).str.replace("%", "", regex=False),
+                errors="coerce"
+            )
+            return pd.Series(vals.values, index=tmp["__key__"])
+
+    # ---------- Case 2: WIDE (metric is a row in the first column) ----------
+    name_col = metrics_df.columns[0]  # first col holds metric names
+    mask = metrics_df[name_col].astype(str).str.strip().eq(value_name)
+    if mask.any():
+        row = metrics_df.loc[mask].iloc[0].drop(labels=[name_col])
+        # column headers are team names
+        out = pd.to_numeric(row.astype(str).str.replace("%", "", regex=False), errors="coerce")
+        out.index = pd.Index(out.index).map(_keyify)
+        return out
+
+    # Fallback: nothing found
+    return pd.Series(dtype="float64")
+
 
 #-----------------------------------------------------METRICS TAB------------------------------------------------
 if tab_choice == "📈 Metrics":
@@ -311,13 +338,6 @@ if tab_choice == "📈 Metrics":
 
     # Canonical key for joining to Metrics sheet
     base_key = base.index.to_series().map(_keyify)
-
-    _detected = _detect_team_col(metrics_df, base.index)
-    if _detected is None:
-        st.warning("Could not detect the team column in the Metrics sheet.")
-    else:
-        st.caption(f"Detected team column in Metrics sheet: **{_detected}**")
-
 
     # --- Attach Off/Def rating from Metrics sheet (keyed, auto-detect team col) ---
     rating_src, rating_short = UNIT_RATING[unit_choice]
