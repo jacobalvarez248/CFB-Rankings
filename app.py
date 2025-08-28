@@ -257,20 +257,14 @@ UNIT_RATING = {
 import re
 
 def _keyify(x) -> str:
-    # lower, strip, remove non-alphanum so variations match: "Ohio State", "OHIO STATE ", "Ohio-State"
     return re.sub(r"[^a-z0-9]", "", str(x).lower().strip())
 
 def _detect_team_col(metrics_df: pd.DataFrame, base_index: pd.Index) -> str | None:
-    """
-    Pick the metrics_df column whose values best overlap with base team names.
-    Returns the column name or None if nothing sensible is found.
-    """
     if metrics_df is None or metrics_df.empty:
         return None
     base_keys = set(pd.Index(base_index).map(_keyify))
     best_col, best_overlap = None, 0
     for col in metrics_df.columns:
-        # only consider textual columns
         if metrics_df[col].dtype == object or str(metrics_df[col].dtype) == "string":
             keys = pd.Series(metrics_df[col]).dropna().map(_keyify)
             overlap = len(set(keys) & base_keys)
@@ -279,17 +273,11 @@ def _detect_team_col(metrics_df: pd.DataFrame, base_index: pd.Index) -> str | No
     return best_col
 
 def metrics_series_keyed(metrics_df: pd.DataFrame, value_col: str, base_index: pd.Index) -> pd.Series:
-    """
-    Return a numeric Series of the requested metrics column, indexed by the canonical team key.
-    Auto-detects which column in metrics_df holds the team names.
-    """
     if metrics_df is None or metrics_df.empty or value_col not in metrics_df.columns:
         return pd.Series(dtype="float64")
-
     team_col = _detect_team_col(metrics_df, base_index)
     if team_col is None:
         return pd.Series(dtype="float64")
-
     tmp = metrics_df[[team_col, value_col]].dropna(subset=[team_col]).copy()
     tmp["__key__"] = tmp[team_col].map(_keyify)
     s = tmp.set_index("__key__")[value_col]
@@ -324,9 +312,12 @@ if tab_choice == "📈 Metrics":
     # Canonical key for joining to Metrics sheet
     base_key = base.index.to_series().map(_keyify)
 
-    # (Optional) debug: run AFTER base is defined
-    # _detected = _detect_team_col(metrics_df, base.index)
-    # st.caption(f"Detected team column in Metrics sheet: { _detected or 'none' }")
+    _detected = _detect_team_col(metrics_df, base.index)
+    if _detected is None:
+        st.warning("Could not detect the team column in the Metrics sheet.")
+    else:
+        st.caption(f"Detected team column in Metrics sheet: **{_detected}**")
+
 
     # --- Attach Off/Def rating from Metrics sheet (keyed, auto-detect team col) ---
     rating_src, rating_short = UNIT_RATING[unit_choice]
