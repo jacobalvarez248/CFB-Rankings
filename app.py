@@ -183,21 +183,69 @@ if tab_choice == "🏆 Rankings":
 
 #-----------------------------------------------------------------METRICS COLUMN MAP--------------------------------------------------------------------------------------------------
 METRIC_GROUPS = {
-    ("Offense", "Yds/Game"):       [("Off. Yds/Game", "Yds/G"), ("Off. Pass Yds/Game", "Pass Yds/G"), ("Off. Rush Yds/Game", "Rush Yds/G"), ("Off. Points/Game", "Pts/G")],
-    ("Defense", "Yds/Game"):       [("Def. Yds/Game", "Yds/G"), ("Def. Pass Yds/Game", "Pass Yds/G"), ("Def. Rush Yds/Game", "Rush Yds/G"), ("Def. Points/Game", "Pts/G")],
+    ("Offense", "Yds/Game"): [
+        ("Off. Yds/Game", "Yds/G"),
+        ("Off. Pass Yds/Game", "Pass Yds/G"),
+        ("Off. Rush Yds/Game", "Rush Yds/G"),
+        ("Off. Points/Game", "Pts/G"),
+    ],
+    ("Defense", "Yds/Game"): [
+        ("Def. Yds/Game", "Yds/G"),
+        ("Def. Pass Yds/Game", "Pass Yds/G"),
+        ("Def. Rush Yds/Game", "Rush Yds/G"),
+        ("Def. Points/Game", "Pts/G"),
+    ],
 
-    ("Offense", "Yards/Play"):     [("Off. Yds/Play", "YPP"), ("Off. Pass Yds/Play", "Pass YPP"), ("Off. Rush Yds/Play", "Rush YPP"), ("Off. Points/Play", "Pts/Play")],
-    ("Defense", "Yards/Play"):     [("Def. Yds/Play", "YPP"), ("Def. Pass Yds/Play", "Pass YPP"), ("Def. Rush Yds/Play", "Rush YPP"), ("Def. Points/Play", "Pts/Play")],
+    ("Offense", "Yards/Play"): [
+        ("Off. Yds/Play", "YPP"),
+        ("Off. Pass Yds/Play", "Pass YPP"),
+        ("Off. Rush Yds/Play", "Rush YPP"),
+        ("Off. Points/Play", "Pts/Play"),
+    ],
+    ("Defense", "Yards/Play"): [
+        ("Def. Yds/Play", "YPP"),
+        ("Def. Pass Yds/Play", "Pass YPP"),
+        ("Def. Rush Yds/Play", "Rush YPP"),
+        ("Def. Points/Play", "Pts/Play"),
+    ],
 
-    ("Offense", "EPA/Play"):       [("Off. Points/Scoring Opp.", "Pts/ScOpp"), ("Off. EPA/Play", "EPA/P"), ("Off. Pass EPA/Play", "Pass EPA/P"), ("Off. Rush EPA/Play", "Rush EPA/P")],
-    ("Defense", "EPA/Play"):       [("Def. Points/Scoring Opp.", "Pts/ScOpp"), ("Def. EPA/Play", "EPA/P"), ("Def. Pass EPA/Play", "Pass EPA/P"), ("Def. Rush EPA/Play", "Rush EPA/P")],
+    ("Offense", "EPA/Play"): [
+        ("Off. Points/Scoring Opp.", "Pts/ScOpp"),
+        ("Off. EPA/Play", "EPA/P"),
+        ("Off. Pass EPA/Play", "Pass EPA/P"),
+        ("Off. Rush EPA/Play", "Rush EPA/P"),
+    ],
+    ("Defense", "EPA/Play"): [
+        ("Def. Points/Scoring Opp.", "Pts/ScOpp"),
+        ("Def. EPA/Play", "EPA/P"),
+        ("Def. Pass EPA/Play", "Pass EPA/P"),
+        ("Def. Rush EPA/Play", "Rush EPA/P"),
+    ],
 
-    ("Offense", "Success Rate"):   [("Off. Success Rate", "SR"), ("Off. Pass Success Rate", "Pass SR"), ("Off. Rush Success Rate", "Rush SR")],
-    ("Defense", "Success Rate"):   [("Def. Success Rate", "SR"), ("Def. Pass Success Rate", "Pass SR"), ("Def. Rush Success Rate", "Rush SR")],
+    ("Offense", "Success Rate"): [
+        ("Off. Success Rate", "SR"),
+        ("Off. Pass Success Rate", "Pass SR"),
+        ("Off. Rush Success Rate", "Rush SR"),
+    ],
+    ("Defense", "Success Rate"): [
+        ("Def. Success Rate", "SR"),
+        ("Def. Pass Success Rate", "Pass SR"),
+        ("Def. Rush Success Rate", "Rush SR"),
+    ],
 
-    ("Offense", "Explosiveness"):  [("Off. Explosiveness", "Expl"), ("Off. Pass Explosiveness", "Pass Expl"), ("Off. Rush Explosiveness", "Rush Expl")],
-    ("Defense", "Explosiveness"):  [("Def. Explosiveness", "Expl"), ("Def. Pass Explosiveness", "Pass Expl"), ("Def. Rush Explosiveness", "Rush Expl")],
+    # Note the single “s” in your sheet: “Explosivenes”
+    ("Offense", "Explosiveness"): [
+        ("Off. Explosiveness", "Expl"),
+        ("Off. Pass Explosivenes", "Pass Expl"),
+        ("Off. Rush Explosiveness", "Rush Expl"),
+    ],
+    ("Defense", "Explosiveness"): [
+        ("Def. Explosiveness", "Expl"),
+        ("Def. Pass Explosivenes", "Pass Expl"),
+        ("Def. Rush Explosiveness", "Rush Expl"),
+    ],
 }
+
 
 # The rating column to include right after the three fixed columns
 UNIT_RATING = {
@@ -210,8 +258,6 @@ import re
 def _keyify(x) -> str:
     # lower, strip, remove all non [a-z0-9] so “Ohio State”, “OHIO STATE ”, etc. match
     return re.sub(r"[^a-z0-9]", "", str(x).lower().strip())
-
-def metrics_series(metrics_df, col_name, team_candidates=("Team","Team Name","School","TeamName","Team_Name")):
     """
     Return a numeric Series indexed by a canonical team key (via _keyify).
     If the column or team column is missing, return an empty float Series.
