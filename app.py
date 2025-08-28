@@ -257,8 +257,12 @@ UNIT_RATING = {
 import re
 
 def _keyify(x) -> str:
-    # normalize names so "Ohio State", "OHIO STATE", "Ohio-State" all match
+    # normalize team names: "Ohio State", "OHIO STATE", "Ohio-State" -> "ohiostate"
     return re.sub(r"[^a-z0-9]", "", str(x).lower().strip())
+
+def _norm(s: str) -> str:
+    # normalize metric names for matching: remove spaces/punct/case
+    return re.sub(r"[^a-z0-9]", "", str(s).lower().strip())
 
 def _detect_team_col(metrics_df: pd.DataFrame, base_index: pd.Index) -> str | None:
     """Pick the column in a TALL sheet whose values overlap base team names the most."""
@@ -276,10 +280,10 @@ def _detect_team_col(metrics_df: pd.DataFrame, base_index: pd.Index) -> str | No
 
 def metrics_series_keyed(metrics_df: pd.DataFrame, value_name: str, base_index: pd.Index) -> pd.Series:
     """
-    Return a numeric Series for the requested metric, indexed by canonical team key.
+    Returns a numeric Series for the requested metric, indexed by canonical team key.
     Works for BOTH:
       - TALL sheets: columns = [Team/School/..., <metrics...>], rows = teams
-      - WIDE sheets: first column = metric names, remaining columns = teams
+      - WIDE sheets: first column holds metric names, remaining columns are teams
     """
     if metrics_df is None or metrics_df.empty:
         return pd.Series(dtype="float64")
@@ -291,24 +295,35 @@ def metrics_series_keyed(metrics_df: pd.DataFrame, value_name: str, base_index: 
             tmp = metrics_df[[team_col, value_name]].dropna(subset=[team_col]).copy()
             tmp["__key__"] = tmp[team_col].map(_keyify)
             vals = pd.to_numeric(
-                tmp[value_name].astype(str).str.replace("%", "", regex=False),
+                tmp[value_name].astype(str).str.replace("%", "", regex=False).str.replace(",", "", regex=False),
                 errors="coerce"
             )
             return pd.Series(vals.values, index=tmp["__key__"])
 
-    # ---------- Case 2: WIDE (metric is a row in the first column) ----------
-    name_col = metrics_df.columns[0]  # first col holds metric names
-    mask = metrics_df[name_col].astype(str).str.strip().eq(value_name)
+    # ---------- Case 2: WIDE (metric is a row label in the FIRST column) ----------
+    first_col = metrics_df.iloc[:, 0].astype(str)                 # use position, not column name
+    norm_first = first_col.map(_norm)
+    target_key = _norm(value_name)
+
+    # exact normalized match
+    mask = norm_first.eq(target_key)
+    if not mask.any():
+        # try a forgiving contains match as a fallback (handles minor typos like 'Explosivenes')
+        mask = norm_first.str.contains(target_key, na=False)
+
     if mask.any():
-        row = metrics_df.loc[mask].iloc[0].drop(labels=[name_col])
-        # column headers are team names
-        out = pd.to_numeric(row.astype(str).str.replace("%", "", regex=False), errors="coerce")
-        out.index = pd.Index(out.index).map(_keyify)
+        # take the first matching row; columns 1..end are teams
+        row_vals = metrics_df.loc[mask].iloc[0, 1:]
+        team_headers = metrics_df.columns[1:]
+        out = pd.to_numeric(
+            row_vals.astype(str).str.replace("%", "", regex=False).str.replace(",", "", regex=False),
+            errors="coerce"
+        )
+        out.index = pd.Index(team_headers).map(_keyify)
         return out
 
     # Fallback: nothing found
     return pd.Series(dtype="float64")
-
 
 #-----------------------------------------------------METRICS TAB------------------------------------------------
 if tab_choice == "📈 Metrics":
