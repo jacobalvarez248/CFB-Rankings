@@ -258,7 +258,7 @@ if tab_choice == "📈 Metrics":
 
     # Add ranks in parentheses
     def add_rank(series, inverse=False):
-        ranked = series.rank(ascending=not inverse, method='min').astype(int)
+        ranked = series.rank(ascending=not inverse, method='min').astype("Int64")
         return series.map('{:.1f}'.format if series.dtype.kind == 'f' else '{}') + ' (' + ranked.astype(str) + ')'
 
     for col in selected_cols:
