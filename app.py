@@ -199,11 +199,11 @@ if tab_choice == "📈 Metrics":
     # Merge Expected Wins data with Metrics data
     core_cols = ['Team', 'Rk', 'Pwr Rtg', 'Off Rtg', 'Def Rtg']
     df_core = df[[col for col in core_cols if col in df.columns]].copy()
-    
-    # Now try to merge (after checking columns)
     merged_df = pd.merge(df_core, metrics_df, on='Team', how='inner')
 
-    merged_df.set_index('Team', inplace=True)
+    # Sort BEFORE formatting to string
+    if 'Pwr Rtg' in merged_df.columns:
+        merged_df.sort_values("Pwr Rtg", ascending=False, inplace=True)
 
     # Dropdown logic
     metric_map = {
@@ -234,15 +234,14 @@ if tab_choice == "📈 Metrics":
     metric_cols = metric_map[metric_choice][unit_choice]
     columns_to_show = base_cols + extra + metric_cols
 
-    # Filter columns safely
     available_cols = [col for col in columns_to_show if col in merged_df.columns]
     missing_cols = [col for col in columns_to_show if col not in merged_df.columns]
     if missing_cols:
         st.warning(f"Missing columns in data: {', '.join(missing_cols)}")
 
     view = merged_df[available_cols].copy()
+    view.set_index('Team', inplace=True)
 
-    # Ranking logic
     ranks = {}
     for col in metric_cols:
         if col not in view.columns:
@@ -263,13 +262,11 @@ if tab_choice == "📈 Metrics":
         if col in view.columns:
             view[col] = view[col].apply(lambda v: format_cell(col, v))
 
-    # Add logo only for Team
     view.insert(1, 'Team', view.index.map(
-        lambda team: f'<img src="{logos_df.set_index("Team").at[team, "Image URL"]}" width="20">' 
+        lambda team: f'<img src="{logos_df.set_index("Team").at[team, "Image URL"]}" width="20">'
         if team in logos_df.set_index("Team").index else team
     ))
 
-    # Rename for mobile display
     rename_dict = {
         "Rk": "Rk", "Pwr Rtg": "Pwr", "Off Rtg": "Off", "Def Rtg": "Def",
         "Off. Yds/Game": "Y/G", "Off. Pass Yds/Game": "P Y/G", "Off. Rush Yds/Game": "R Y/G", "Off. Points/Game": "Pts/G",
@@ -284,15 +281,11 @@ if tab_choice == "📈 Metrics":
         "Def. Explosiveness": "Expl%", "Def. Pass Explosivenes": "P Expl%", "Def. Rush Explosiveness": "R Expl%",
     }
     view.rename(columns=rename_dict, inplace=True)
-    
-    # Sort BEFORE formatting to string
-    if 'Pwr Rtg' in merged_df.columns:
-        merged_df.sort_values("Pwr Rtg", ascending=False, inplace=True)
-    
-    # Now extract the view after sorting
-    view = merged_df[available_cols].copy()
-    
-    # Render table
+
+    for col in view.columns:
+        if view[col].dtype in [float, int]:
+            view[col] = view[col].apply(lambda x: f"{x:.1f}" if pd.notna(x) else "")
+
     st.markdown("""
     <style>
     table {
@@ -321,7 +314,7 @@ if tab_choice == "📈 Metrics":
     }
     </style>
     """, unsafe_allow_html=True)
-    
+
     st.write(view.to_html(escape=False, index=False), unsafe_allow_html=True)
 
 #---------------------------------------------------------Team Dashboards--------------------------------------------------------
