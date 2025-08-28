@@ -306,10 +306,10 @@ if tab_choice == "📈 Metrics":
     }
     view.rename(columns=rename_dict, inplace=True)
 
-    # Format Ratings (Pwr/Off/Def) to one decimal
-    for col in ["Pwr", "Off", "Def"]:
+    # round before rename so dtype stays numeric
+    for col in ["Pwr Rtg", "Off Rtg", "Def Rtg"]:
         if col in view.columns:
-            view[col] = view[col].apply(lambda x: f"{x:.1f}" if pd.notna(x) else "")
+            view[col] = view[col].round(1)
 
     # ---- Build Sort options AFTER rename so users sort by what they see
     sortable_cols_m = [c for c in view.columns if c not in ['Team', 'Conf Name']]
