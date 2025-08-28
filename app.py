@@ -280,45 +280,58 @@ def _detect_team_col(metrics_df: pd.DataFrame, base_index: pd.Index) -> str | No
 
 def metrics_series_keyed(metrics_df: pd.DataFrame, value_name: str, base_index: pd.Index) -> pd.Series:
     """
-    Returns a numeric Series for the requested metric, indexed by canonical team key.
+    Return a numeric Series for the requested metric, indexed by canonical team key.
     Works for BOTH:
       - TALL sheets: columns = [Team/School/..., <metrics...>], rows = teams
       - WIDE sheets: first column holds metric names, remaining columns are teams
+    Matching is robust: case-insensitive and ignores punctuation/spaces.
     """
     if metrics_df is None or metrics_df.empty:
         return pd.Series(dtype="float64")
 
-    # ---------- Case 1: TALL (metric is a column) ----------
-    if value_name in metrics_df.columns:
+    # ----------- TALL (metric is a column): do normalized lookup -----------
+    target = _norm(value_name)
+    col_norm_map = {_norm(c): c for c in metrics_df.columns}
+    tall_col = col_norm_map.get(target)
+    if tall_col is None:
+        # try contains-normalized (handles slight text differences)
+        for norm_col, orig in col_norm_map.items():
+            if target and target in norm_col:
+                tall_col = orig
+                break
+
+    if tall_col is not None:
         team_col = _detect_team_col(metrics_df, base_index)
         if team_col:
-            tmp = metrics_df[[team_col, value_name]].dropna(subset=[team_col]).copy()
+            tmp = metrics_df[[team_col, tall_col]].dropna(subset=[team_col]).copy()
             tmp["__key__"] = tmp[team_col].map(_keyify)
-            vals = pd.to_numeric(
-                tmp[value_name].astype(str).str.replace("%", "", regex=False).str.replace(",", "", regex=False),
-                errors="coerce"
+            vals = (
+                tmp[tall_col]
+                .astype(str)
+                .str.replace("%", "", regex=False)
+                .str.replace(",", "", regex=False)
             )
-            return pd.Series(vals.values, index=tmp["__key__"])
+            return pd.to_numeric(vals, errors="coerce").set_axis(tmp["__key__"].values, copy=False)
 
-    # ---------- Case 2: WIDE (metric is a row label in the FIRST column) ----------
-    first_col = metrics_df.iloc[:, 0].astype(str)                 # use position, not column name
-    norm_first = first_col.map(_norm)
-    target_key = _norm(value_name)
+    # ----------- WIDE (metric is a row in the first column): robust row match -----------
+    name_col_series = metrics_df.iloc[:, 0].astype(str)
+    norm_first = name_col_series.map(_norm)
 
     # exact normalized match
-    mask = norm_first.eq(target_key)
-    if not mask.any():
-        # try a forgiving contains match as a fallback (handles minor typos like 'Explosivenes')
-        mask = norm_first.str.contains(target_key, na=False)
+    mask = norm_first.eq(target)
+    if not mask.any() and target:
+        # fallback: contains
+        mask = norm_first.str.contains(target, na=False)
 
     if mask.any():
-        # take the first matching row; columns 1..end are teams
         row_vals = metrics_df.loc[mask].iloc[0, 1:]
         team_headers = metrics_df.columns[1:]
-        out = pd.to_numeric(
-            row_vals.astype(str).str.replace("%", "", regex=False).str.replace(",", "", regex=False),
-            errors="coerce"
+        out = (
+            row_vals.astype(str)
+            .str.replace("%", "", regex=False)
+            .str.replace(",", "", regex=False)
         )
+        out = pd.to_numeric(out, errors="coerce")
         out.index = pd.Index(team_headers).map(_keyify)
         return out
 
