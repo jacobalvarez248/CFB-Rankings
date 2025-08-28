@@ -10,6 +10,11 @@ st.set_page_config(page_title="CFB Rankings", layout="wide", initial_sidebar_sta
 def load_data():
     df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Metrics', header=1)
     logos_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Logos', header=1)
+
+    # Optional: show these to debug what the sheets contain
+    st.write("✅ Raw Metrics sheet columns:", df.columns.tolist())
+    st.write("✅ Raw Logos sheet columns:", logos_df.columns.tolist())
+
     return df, logos_df
 
 df, logos_df = load_data()
@@ -28,6 +33,9 @@ def deduplicate_columns(columns):
 
 df.columns = pd.Index([str(c) for c in deduplicate_columns(df.columns)])
 df = df.loc[:, ~df.columns.str.contains(r'\.(1|2|3|4)$')]
+
+st.write("df columns:", df.columns.tolist())
+st.write("logos_df columns:", logos_df.columns.tolist())
 
 df = df.merge(logos_df[['Team', 'Image URL']], on='Team', how='left')
 if 'Current Rank' in df.columns:
