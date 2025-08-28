@@ -10,7 +10,7 @@ st.set_page_config(page_title="CFB Rankings", layout="wide", initial_sidebar_sta
 def load_data():
     expected_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Expected Wins', header=1)
     logos_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Logos', header=1)
-    metrics_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Metrics', header=1)
+    metrics_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Metrics', header=0)
     
     # Fix column naming issue
     metrics_df.reset_index(inplace=True)
