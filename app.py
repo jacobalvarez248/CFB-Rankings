@@ -202,6 +202,24 @@ UNIT_RATING = {
     "Offense": ("Offensive Rating", "Off Rtg"),
     "Defense": ("Defensive Rating", "Def Rtg"),
 }
+def metrics_series(metrics_df, col_name, team_col="Team"):
+    """
+    Return a numeric Series indexed by team for the given column name.
+    If the column (or Team col) doesn't exist, return an empty Series.
+    """
+    if metrics_df is None or metrics_df.empty:
+        return pd.Series(dtype="float64")
+
+    if team_col not in metrics_df.columns or col_name not in metrics_df.columns:
+        return pd.Series(dtype="float64")
+
+    s = (
+        metrics_df[[team_col, col_name]]
+        .dropna(subset=[team_col])
+        .rename(columns={team_col: "Team"})
+        .set_index("Team")[col_name]
+    )
+    return pd.to_numeric(s, errors="coerce")
 
 #-----------------------------------------------------METRICS TAB------------------------------------------------
 st.markdown("## 📈 Metrics")
@@ -229,13 +247,10 @@ base["Team"] = base.index.to_series().map(lambda name: f'<img src="{logos_map.ge
 # Default sort by Pwr Rtg descending
 base = base.sort_values(by="Pwr Rtg", ascending=False, kind="mergesort")
 
-# --- Attach the rating column for the selected unit ---
+# --- Attach the rating column for the selected unit (SAFE) ---
 rating_src, rating_short = UNIT_RATING[unit_choice]
-if rating_src in metrics_df.columns:
-    rating_series = metrics_df.set_index("Team")[rating_src]
-else:
-    rating_series = pd.NA
-base[rating_short] = base.index.to_series().map(lambda t: rating_series.loc[t] if t in rating_series.index else pd.NA)
+rating_series = metrics_series(metrics_df, rating_src)  # use helper
+base[rating_short] = base.index.to_series().map(lambda t: rating_series.get(t, pd.NA))
 
 # --- Determine the metric columns to show next ---
 cols_spec = METRIC_GROUPS[(unit_choice, metric_choice)]  # list of (source_name_in_xlsx, short_header)
@@ -268,14 +283,10 @@ def is_rate_header(h: str) -> bool:
 # Build the dynamic metric columns
 offense = (unit_choice == "Offense")
 for src_col, short in cols_spec:
-    series = metrics_df.set_index("Team")[src_col] if src_col in metrics_df.columns else pd.Series(dtype=float)
-    # map onto base index (teams)
-    aligned = base.index.to_series().map(lambda t: series.loc[t] if t in series.index else pd.NA).astype("float64")
+    s = metrics_series(metrics_df, src_col)  # SAFE
+    aligned = base.index.to_series().map(lambda t: s.get(t, pd.NA)).astype("float64")
     vals, ranks = add_rank(aligned, offense=offense)
-    base[short] = [
-        fmt_value(v, r, is_rate=is_rate_header(short))
-        for v, r in zip(vals, ranks)
-    ]
+    base[short] = [fmt_value(v, r, is_rate=is_rate_header(short)) for v, r in zip(vals, ranks)]
 
 # Select final visible columns:
 # Rk | Team(logo) | Pwr Rtg | Off/Def Rtg | (chosen metrics…)
