@@ -72,7 +72,13 @@ if 'selected_team' not in st.session_state:
 query_params = st.query_params
 selected_team = query_params.get("selected_team", "")
 default_tab = "📊 Team Dashboards" if selected_team else "🏆 Rankings"
-tab_choice = st.radio(" ", ["🏆 Rankings", "📊 Team Dashboards"], horizontal=True, label_visibility="collapsed", index=0 if default_tab == "🏆 Rankings" else 1)
+
+tab_choice = st.radio(
+    " ", 
+    ["🏆 Rankings", "📈 Metrics", "📊 Team Dashboards"],
+    horizontal=True, 
+    label_visibility="collapsed", 
+    index=0 if default_tab == "🏆 Rankings" else (2 if default_tab == "📊 Team Dashboards" else 1))
 
 #-----------------------------------------------------RANKINGS TAB------------------------------------------------
 if tab_choice == "🏆 Rankings":
@@ -171,7 +177,12 @@ if tab_choice == "🏆 Rankings":
     """, unsafe_allow_html=True)
 
     st.write(styled.to_html(escape=False), unsafe_allow_html=True)
+#----------------------------------------------------------METRICS TAB------------------------------------------------
+if tab_choice == "📈 Metrics":
+    st.markdown("## 📈 Metrics")
+    st.write("Metrics view coming soon...")
 
+#---------------------------------------------------------Team Dashboards--------------------------------------------------------
 if tab_choice == "📊 Team Dashboards":
     st.markdown("## 📊 Team Dashboards")
     all_teams = df.index.tolist()
