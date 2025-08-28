@@ -8,18 +8,11 @@ st.set_page_config(page_title="CFB Rankings", layout="wide", initial_sidebar_sta
 
 @st.cache_data
 def load_data():
-    df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Metrics', header=1)
+    df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Expected Wins', header=1)
     logos_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Logos', header=1)
-
-    # Clean up column names
-    df.columns = df.columns.str.strip().str.replace('\n', ' ').str.replace(r'\s+', ' ', regex=True)
-    logos_df.columns = logos_df.columns.str.strip()
-
     return df, logos_df
 
 df, logos_df = load_data()
-
-# Deduplicate and sanitize columns
 
 def deduplicate_columns(columns):
     seen = {}
@@ -33,36 +26,20 @@ def deduplicate_columns(columns):
             out.append(c)
     return out
 
-df.columns = pd.Index([str(c) for c in deduplicate_columns(df.columns)])
+df.columns = deduplicate_columns(df.columns)
 df = df.loc[:, ~df.columns.str.contains(r'\.(1|2|3|4)$')]
-
-# Ensure 'Team' column exists for merge
-if 'Team' not in df.columns and 'Team Name' in df.columns:
-    df.rename(columns={'Team Name': 'Team'}, inplace=True)
-
-# Ensure 'Team' exists before merge
-if 'Team' not in df.columns:
-    df['Team'] = df.index
-
 df = df.merge(logos_df[['Team', 'Image URL']], on='Team', how='left')
-
-
-# Standardize columns
 if 'Current Rank' in df.columns:
     df['Current Rank'] = df['Current Rank'].astype('Int64')
-
-# Set index and alias
 df['Team Name'] = df['Team']
 df.set_index('Team Name', inplace=True)
 
-# Conference logo map
 conf_logo_map = logos_df.set_index('Team')['Image URL'].to_dict()
 df['Conference Logo'] = df.get('Conference', pd.NA).apply(
     lambda conf: f'<img src="{conf_logo_map.get(conf, '')}" width="15">' if conf_logo_map.get(conf) else (conf if pd.notna(conf) else '')
 )
 df['Conf Name'] = df.get('Conference', pd.NA)
 
-# Drop unnecessary columns
 df.drop(columns=[
     "Conference", "Image URL", "Vegas Win Total",
     "Projected Overall Wins", "Projected Overall Losses",
@@ -70,7 +47,6 @@ df.drop(columns=[
     "Schedule Difficulty Rank", "Column1", "Column3", "Column5"
 ], errors='ignore', inplace=True)
 
-# Rename key columns
 df.rename(columns={
     "Preseason Rank": "Pre Rk",
     "Current Rank": "Rk",
@@ -83,32 +59,26 @@ df.rename(columns={
     "Conference Logo": "Conf"
 }, inplace=True)
 
-# Reorder key columns
 first_cols = ["Pre Rk", "Rk", "Team", "Conf"]
 existing = [c for c in df.columns if c not in first_cols]
 df = df[[c for c in first_cols if c in df.columns] + existing]
 
-# Show cleaned columns for debugging
-st.write("\u2705 Cleaned df columns:", df.columns.tolist())
-
-# Parse query string for selected team
 query_params = st.query_params
 preselect_team = unquote(query_params.get("selected_team", ""))
 if 'selected_team' not in st.session_state:
     st.session_state['selected_team'] = preselect_team if preselect_team else df.index[0]
 
-# Tab selection logic
+# Tab selector with auto-switch logic
+query_params = st.query_params
 selected_team = query_params.get("selected_team", "")
-default_tab = "\ud83c\udfcb\ufe0f Team Dashboards" if selected_team else "\ud83c\udfc6 Rankings"
+default_tab = "📊 Team Dashboards" if selected_team else "🏆 Rankings"
 
 tab_choice = st.radio(
-    " ",
-    ["\ud83c\udfc6 Rankings", "\ud83d\udcca Metrics", "\ud83c\udfcb\ufe0f Team Dashboards"],
-    horizontal=True,
-    label_visibility="collapsed",
-    index=0 if default_tab == "\ud83c\udfc6 Rankings" else (2 if default_tab == "\ud83c\udfcb\ufe0f Team Dashboards" else 1)
-)
-
+    " ", 
+    ["🏆 Rankings", "📈 Metrics", "📊 Team Dashboards"],
+    horizontal=True, 
+    label_visibility="collapsed", 
+    index=0 if default_tab == "🏆 Rankings" else (2 if default_tab == "📊 Team Dashboards" else 1))
 
 #-----------------------------------------------------RANKINGS TAB------------------------------------------------
 if tab_choice == "🏆 Rankings":
@@ -208,13 +178,17 @@ if tab_choice == "🏆 Rankings":
 
     st.write(styled.to_html(escape=False), unsafe_allow_html=True)
     
-#--------------- METRICS TAB: Advanced Metrics Table --------------------------------------------------------#
+#-----------------------------------------------------METRICS TAB------------------------------------------------
 if tab_choice == "📈 Metrics":
     st.markdown("## 📈 Metrics")
 
     c1, c2 = st.columns(2)
     with c1:
-        unit_choice = st.selectbox("Unit", ["Offense", "Defense"], key="metrics_unit")
+        unit_choice = st.selectbox(
+            "Unit",
+            ["Offense", "Defense"],
+            key="metrics_unit"
+        )
     with c2:
         metric_choice = st.selectbox(
             "Metric",
@@ -222,122 +196,8 @@ if tab_choice == "📈 Metrics":
             key="metrics_metric"
         )
 
-    # Always visible columns
-    base_cols = ['Rk', 'Team', 'Pwr Rtg']
-
-    # Rating column based on unit
-    rating_col = 'Off Rtg' if unit_choice == 'Offense' else 'Def Rtg'
-    rating_short = 'Off Rtg' if unit_choice == 'Offense' else 'Def Rtg'
-
-    # Metrics mapping
-    metrics_map = {
-        "Yards/Game": {
-            "Offense": ['Yds/G', 'Pass Y/G', 'Rush Y/G', 'Pts/G'],
-            "Defense": ['Yds/G', 'Pass Y/G', 'Rush Y/G', 'Pts/G']
-        },
-        "Yards/Play": {
-            "Offense": ['Yds/P', 'Pass Y/P', 'Rush Y/P', 'Pts/P'],
-            "Defense": ['Yds/P', 'Pass Y/P', 'Rush Y/P', 'Pts/P']
-        },
-        "EPA/Play": {
-            "Offense": ['ScOpp', 'EPA/P', 'Pass EPA', 'Rush EPA'],
-            "Defense": ['ScOpp', 'EPA/P', 'Pass EPA', 'Rush EPA']
-        },
-        "Success Rate": {
-            "Offense": ['Suc %', 'Pass %', 'Rush %'],
-            "Defense": ['Suc %', 'Pass %', 'Rush %']
-        },
-        "Explosiveness": {
-            "Offense": ['Expl', 'Pass Ex', 'Rush Ex'],
-            "Defense": ['Expl', 'Pass Ex', 'Rush Ex']
-        }
-    }
-
-    # Map back to real column names in df
-    col_lookup = {
-        'Yds/G': 'Off. Yds/Game',
-        'Pass Y/G': 'Off. Pass Yds/Game',
-        'Rush Y/G': 'Off. Rush Yds/Game',
-        'Pts/G': 'Off. Points/Game',
-        'Yds/P': 'Off. Yds/Play',
-        'Pass Y/P': 'Off. Pass Yds/Play',
-        'Rush Y/P': 'Off. Rush Yds/Play',
-        'Pts/P': 'Off. Points/Play',
-        'ScOpp': 'Off. Points/Scoring Opp.',
-        'EPA/P': 'Off. EPA/Play',
-        'Pass EPA': 'Off. Pass EPA/Play',
-        'Rush EPA': 'Off. Rush EPA/Play',
-        'Suc %': 'Off. Success Rate',
-        'Pass %': 'Off. Pass Success Rate',
-        'Rush %': 'Off. Rush Success Rate',
-        'Expl': 'Off. Explosiveness',
-        'Pass Ex': 'Off. Pass Explosivenes',
-        'Rush Ex': 'Off. Rush Explosiveness'
-    }
-
-    # Adjust for defense
-    if unit_choice == 'Defense':
-        for k in list(col_lookup.keys()):
-            col_lookup[k] = col_lookup[k].replace("Off.", "Def.")
-    
-    selected_short = metrics_map[metric_choice][unit_choice]
-    selected_cols = [col_lookup[c] for c in selected_short if col_lookup[c] in df.columns]
-
-    # Debug: Show which metric columns are selected
-    st.write("🔎 selected_short (metric labels):", selected_short)
-    st.write("🔎 selected_cols (from df):", selected_cols)
-    st.write("🔎 All columns in df:", df.columns.tolist())
-    
-    # Optional: Show missing ones for clarity
-    missing_cols = [col_lookup[c] for c in selected_short if col_lookup[c] not in df.columns]
-    st.warning(f"⚠️ Missing from DataFrame: {missing_cols}")
-
-    display_df = df[['Rk', 'Team', 'Pwr Rtg', rating_col] + selected_cols].copy()
-    display_df.rename(columns={rating_col: rating_short}, inplace=True)
-
-    # Add ranks in parentheses
-    def add_rank(series, inverse=False, is_percent=False):
-        ranked = series.rank(ascending=not inverse, method='min').astype("Int64")
-        if is_percent:
-            value_fmt = series.map(lambda x: f"{x*100:.1f}%" if pd.notna(x) else '')
-        else:
-            value_fmt = series.map(lambda x: f"{x:.1f}" if pd.notna(x) else '')
-        return value_fmt + ranked.map(lambda r: f" ({r})" if pd.notna(r) else '')
-
-    for col in selected_cols:
-        if 'Rate' in col or 'Success' in col or '%' in col:
-            display_df[col] = add_rank(df[col], inverse=(unit_choice == 'Defense'), is_percent=True)
-        else:
-            display_df[col] = add_rank(df[col], inverse=(unit_choice == 'Defense'))
-    
-    display_df[rating_short] = df[rating_col].map(lambda x: f"{x:.1f}" if pd.notna(x) else '')
-
-    # Replace team name with logo
-    def team_logo_html(team):
-        url = logos_df.set_index("Team").at[team, "Image URL"]
-        return f'<img src="{url}" width="22">' if url else team
-    display_df['Team'] = display_df.index.map(team_logo_html)
-
-    # Format columns
-    styled = display_df.style.hide(axis="index")
-
-    # Reduce font size and set tight layout
-    st.markdown("""
-    <style>
-    .block-container { padding-left: .5rem !important; padding-right: .5rem !important; }
-    table { width: 100% !important; table-layout: fixed; word-wrap: break-word; font-size: 11px; border-collapse: collapse; }
-    td, th { padding: 4px !important; text-align: center !important; vertical-align: middle !important; font-size: 10px; }
-    thead th {
-      background-color: #004080 !important;
-      color: #ffffff !important;
-      font-weight: 500 !important;
-      font-size: 9.5px !important;
-    }
-    td img { display: block; margin: 0 auto; }
-    </style>
-    """, unsafe_allow_html=True)
-
-    st.write(styled.to_html(escape=False), unsafe_allow_html=True)
+    # Placeholder for now—wired up and ready for data logic next
+    st.info(f"Selected: **{unit_choice}** • **{metric_choice}**. Metric table/visuals coming next.")
 
 #---------------------------------------------------------Team Dashboards--------------------------------------------------------
 if tab_choice == "📊 Team Dashboards":
