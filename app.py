@@ -196,7 +196,18 @@ if tab_choice == "📈 Metrics":
     # Merge Expected Wins data with Metrics data
     core_cols = ['Team', 'Rk', 'Pwr Rtg', 'Off Rtg', 'Def Rtg']
     df_core = df[[col for col in core_cols if col in df.columns]].copy()
+    
+    # DEBUG: Check for column issues before merging
+    st.subheader("Debug Columns")
+    st.text("df_core columns:")
+    st.write(df_core.columns.tolist())
+    
+    st.text("metrics_df columns:")
+    st.write(metrics_df.columns.tolist())
+    
+    # Now try to merge (after checking columns)
     merged_df = pd.merge(df_core, metrics_df, on='Team', how='inner')
+
     merged_df.set_index('Team', inplace=True)
 
     # Dropdown logic
