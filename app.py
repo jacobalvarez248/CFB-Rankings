@@ -240,33 +240,43 @@ EXTRA_COMPARISON_METRICS = [
 
 def build_rank_tables(team_df, home, away):
     """
-    Returns:
-      when_home_has_ball: home OFF vs away DEF
-      when_away_has_ball: away OFF vs home DEF
-    NaN-safe: coerces metric columns to numeric, keeps NaNs in ranks,
-    skips rows where a rank is missing.
+    NaN-safe ranks; cleans Advanced Stats text columns (%, commas) first.
     """
     import pandas as pd
-    import numpy as np
 
     tdf = team_df.set_index('Team', drop=False)
     nteams = len(tdf)
 
-    # Combine base + any extra metrics you defined elsewhere
+    # Combine base + any extra metrics (Advanced Stats)
     all_metrics = COMPARISON_METRICS + (EXTRA_COMPARISON_METRICS if 'EXTRA_COMPARISON_METRICS' in globals() else [])
 
-    # Pre-coerce all metric columns to numeric once (errors -> NaN)
+    # --- Clean the 8 Advanced Stats columns you specified (if present)
+    adv_cols_to_clean = [
+        "Offense StuffRate",
+        "Offense PointsPerOpportunity",
+        "Offense FieldPosition AverageStart",
+        "Offense Havoc Total",
+        "Defense StuffRate",
+        "Defense PointsPerOpportunity",
+        "Defense FieldPosition AverageStart",
+        "Defense Havoc Total",
+    ]
+    for c in adv_cols_to_clean:
+        if c in tdf.columns:
+            tdf[c] = _clean_numeric_series(tdf[c])
+
+    # Also coerce any other metric columns just in case
     needed_cols = set()
     for _, off_col, def_col in all_metrics:
         if off_col in tdf.columns: needed_cols.add(off_col)
         if def_col in tdf.columns: needed_cols.add(def_col)
     for c in needed_cols:
-        tdf[c] = pd.to_numeric(tdf[c], errors='coerce')
+        if c not in adv_cols_to_clean:  # avoid double work
+            tdf[c] = pd.to_numeric(tdf[c], errors='coerce')
 
     def rank_series(col, higher_is_better):
-        # keep NaNs; nullable Int64 so formatting doesn’t crash
         r = tdf[col].rank(ascending=not higher_is_better, method='min', na_option='keep')
-        return r.astype('Int64')
+        return r.astype('Int64')  # nullable ints (no crash on NaN)
 
     # Precompute ranks (offense high→good, defense low→good)
     ranks = {}
@@ -283,7 +293,6 @@ def build_rank_tables(team_df, home, away):
                 continue
             off_val = ranks[off_col].get(off_team, pd.NA)
             def_val = ranks[def_col].get(def_team, pd.NA)
-            # Skip if either rank is missing
             if pd.isna(off_val) or pd.isna(def_val):
                 continue
             off_rank = int(off_val)
@@ -294,8 +303,16 @@ def build_rank_tables(team_df, home, away):
         out['N'] = nteams
         return out
 
-    return one_side(home, away), one_side(away, home)
+    # (Optional) quick diagnostics, comment out if noisy:
+    # for c in adv_cols_to_clean:
+    #     if c in tdf.columns:
+    #         nunique = tdf[c].nunique(dropna=True)
+    #         if nunique == 0:
+    #             st.info(f"‘{c}’ has no numeric values after cleaning.")
+    #         elif nunique == 1:
+    #             st.info(f"‘{c}’ has a single unique value across teams (all tied).")
 
+    return one_side(home, away), one_side(away, home)
 
 def projected_score(team_df, home, away, neutral: bool):
     """
