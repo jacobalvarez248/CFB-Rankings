@@ -75,20 +75,20 @@ if 'selected_team' not in st.session_state:
 # --- Build a clean team-level frame from Metrics for ranks + ratings
 def build_team_frame(df_expected, df_metrics, df_logos, df_advanced=None):
     """
-    Build the unified team frame from Metrics (+ optional Advanced Stats Data).
-    Robust to header variants: tries multiple candidate names for required fields.
+    Build unified team frame from Metrics (+ optional Advanced).
+    Robust to header variants and capitalization. Falls back to df_expected
+    for Power Rating when missing in Metrics. Also allows using 'off'/'def'
+    columns if Offensive/Defensive Rating aren't present.
     """
+    import re
     import pandas as pd
 
-    # --- copy & normalize column names to strings without surrounding spaces
+    # --- copies + normalize column names (string + strip)
     base = df_metrics.copy()
     base.columns = [str(c).strip() for c in base.columns]
-
-    # Also normalize 'Team' cell values (Excel sometimes has trailing spaces)
     if 'Team' in base.columns:
         base['Team'] = base['Team'].astype(str).str.strip()
 
-    # Optionally merge Advanced sheet
     if df_advanced is not None:
         adv = df_advanced.copy()
         adv.columns = [str(c).strip() for c in adv.columns]
@@ -96,45 +96,113 @@ def build_team_frame(df_expected, df_metrics, df_logos, df_advanced=None):
             adv['Team'] = adv['Team'].astype(str).str.strip()
             base = base.merge(adv, on='Team', how='left')
 
-    # --- helper to resolve columns by trying a list of candidates
-    def resolve_col(df_, candidates, required_name):
-        for c in candidates:
-            if c in df_.columns:
-                return c
-        # If still missing, surface a concise diagnostic with what *does* exist
-        available = ", ".join(list(df_.columns)[:40])  # avoid dumping everything
+    # normalize expected df columns too (for fallback)
+    df_exp = df_expected.copy()
+    df_exp.columns = [str(c).strip() for c in df_exp.columns]
+    if 'Team' in df_exp.columns:
+        df_exp['Team'] = df_exp['Team'].astype(str).str.strip()
+
+    # Build a case-insensitive lookup map: cleaned -> original
+    def clean(s: str) -> str:
+        # lower, remove extra spaces and some punctuation for robust matching
+        s2 = re.sub(r'\s+', ' ', s.strip().lower())
+        s2 = s2.replace('.', '')
+        return s2
+
+    col_map = {clean(c): c for c in base.columns}
+
+    def resolve_exact(candidates):
+        """Try exact alias list (case-insensitive, punctuation/space tolerant)."""
+        for alias in candidates:
+            key = clean(alias)
+            if key in col_map:
+                return col_map[key]
+        return None
+
+    def resolve_heuristic(contains_all, optional_any=None):
+        """
+        Find first column whose cleaned name contains ALL tokens in `contains_all`
+        and, if provided, ANY token in `optional_any`.
+        """
+        for k, orig in col_map.items():
+            if all(tok in k for tok in contains_all) and (optional_any is None or any(tok in k for tok in optional_any)):
+                return orig
+        return None
+
+    # --- Resolve Team col
+    team_col = resolve_exact(['Team', 'School', 'Team Name'])
+    if not team_col:
+        available = ", ".join(list(base.columns)[:40])
+        raise ValueError(f"Missing 'Team' column. First 40 available columns: {available}")
+
+    # --- Resolve Power Rating: try metrics first; else fallback from df_expected
+    power_col = resolve_exact(['Power Rating', 'Power', 'Pwr Rating', 'Pwr Rtg'])
+    if not power_col:
+        power_col = resolve_heuristic(['power'], ['rtg', 'rating'])  # e.g., 'power rtg', 'power rating'
+    if not power_col:
+        # fallback from Expected Wins table
+        # join in Pwr Rtg if present
+        pwr_from_exp = None
+        for cand in ['Power Rating', 'Pwr Rtg', 'Pwr', 'Pwr Rating']:
+            if cand in df_exp.columns:
+                pwr_from_exp = cand
+                break
+        if pwr_from_exp:
+            base = base.merge(df_exp[['Team', pwr_from_exp]], on='Team', how='left', suffixes=('', '_exp'))
+            power_col = pwr_from_exp
+        else:
+            available = ", ".join(list(base.columns)[:40])
+            raise ValueError(
+                "Could not find 'Power Rating' (nor fallback in Expected Wins). "
+                f"Tried aliases. First 40 available columns: {available}"
+            )
+
+    # --- Resolve Offensive Rating (or fallback to 'off')
+    off_col = resolve_exact(['Offensive Rating', 'Offense Rating', 'Off Rtg'])
+    if not off_col:
+        off_col = resolve_heuristic(['offens',], ['rtg','rating'])
+    if not off_col:
+        # allow fallback to compact columns used elsewhere
+        off_col = resolve_exact(['off', 'Off', 'OFF'])
+    if not off_col:
+        available = ", ".join(list(base.columns)[:40])
         raise ValueError(
-            f"Missing '{required_name}'. Tried {candidates}. "
+            "Could not find Offensive Rating (nor 'off'). "
             f"First 40 available columns: {available}"
         )
 
-    # Try common variants for each required field
-    team_col = resolve_col(base, ['Team', 'School', 'Team Name'], 'Team')
-    pwr_col  = resolve_col(base, ['Power Rating', 'Power', 'Pwr', 'Pwr Rating', 'Pwr Rtg'], 'Power Rating')
-    off_col  = resolve_col(base, ['Offensive Rating', 'Offense Rating', 'Off Rtg', 'Offensive', 'off'], 'Offensive Rating')
-    def_col  = resolve_col(base, ['Defensive Rating', 'Defense Rating', 'Def Rtg', 'Defensive', 'def'], 'Defensive Rating')
+    # --- Resolve Defensive Rating (or fallback to 'def')
+    def_col = resolve_exact(['Defensive Rating', 'Defense Rating', 'Def Rtg'])
+    if not def_col:
+        def_col = resolve_heuristic(['defens',], ['rtg','rating'])
+    if not def_col:
+        def_col = resolve_exact(['def', 'Def', 'DEF'])
+    if not def_col:
+        available = ", ".join(list(base.columns)[:40])
+        raise ValueError(
+            "Could not find Defensive Rating (nor 'def'). "
+            f"First 40 available columns: {available}"
+        )
 
-    # Standardize to canonical column names expected downstream
-    # (keep originals intact too)
-    base = base.rename(columns={
-        team_col: 'Team',
-        pwr_col:  'Power Rating',
-        off_col:  'Offensive Rating',
-        def_col:  'Defensive Rating',
-    })
+    # Standardize the resolved columns to canonical names the app uses later
+    rename_map = {}
+    if team_col != 'Team':                 rename_map[team_col] = 'Team'
+    if power_col != 'Power Rating':        rename_map[power_col] = 'Power Rating'
+    if off_col != 'Offensive Rating':      rename_map[off_col] = 'Offensive Rating'
+    if def_col != 'Defensive Rating':      rename_map[def_col] = 'Defensive Rating'
+    base = base.rename(columns=rename_map)
 
     # Attach logos
     logos_map = df_logos.set_index('Team')['Image URL'].to_dict()
     base['Logo'] = base['Team'].map(logos_map).fillna('')
 
     # Global ranks across ALL teams
-    # Offense: higher is better -> rank descending
-    # Defense: lower  is better -> rank ascending
     base['Pwr Rank'] = base['Power Rating'].rank(ascending=False, method='min').astype(int)
-    base['Off Rank'] = base['Offensive Rating'].rank(ascending=False, method='min').astype(int)
-    base['Def Rank'] = base['Defensive Rating'].rank(ascending=True,  method='min').astype(int)
+    base['Off Rank'] = base['Offensive Rating'].rank(ascending=False, method='min').astype(int)  # higher better
+    base['Def Rank'] = base['Defensive Rating'].rank(ascending=True,  method='min').astype(int)  # lower  better
 
     return base
+
 
 # --- Metric map: Offense column vs matching Defense column on the Metrics sheet
 COMPARISON_METRICS = [
