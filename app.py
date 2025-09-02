@@ -6,6 +6,16 @@ import streamlit.components.v1 as components
 import numpy as np
 
 st.set_page_config(page_title="CFB Rankings", layout="wide", initial_sidebar_state="expanded")
+def _clean_numeric_series(s):
+    # Convert typical Excel-ish text numbers like "41.2%" or "1,234" to real numbers
+    return pd.to_numeric(
+        s.astype(str)
+         .str.replace('\u200b', '', regex=False)  # zero-width space
+         .str.replace(',', '', regex=False)
+         .str.replace('%', '', regex=False)
+         .str.strip(),
+        errors='coerce'
+    )
 
 @st.cache_data
 def load_data():
