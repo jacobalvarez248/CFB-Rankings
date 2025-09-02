@@ -179,19 +179,16 @@ def projected_score(team_df, home, away, neutral: bool):
 def style_rank_table(df):
     """Blue gradient where rank #1 is darkest; also badge the 5 closest and 5 furthest by Δ Rank."""
     n = int(df['N'].iloc[0])
-    # Create parity/advantage flags
     closest_idx = df.nsmallest(5, 'Δ Rank').index
     furthest_idx = df.nlargest(5, 'Δ Rank').index
 
     def highlight_rows(row):
         if row.name in closest_idx:
-            return ['background-color: #e6f0ff'] * len(row)  # light blue band
+            return ['background-color: #e6f0ff'] * len(row)
         if row.name in furthest_idx:
-            return ['background-color: #ffe9cc'] * len(row)  # light orange band
+            return ['background-color: #ffe9cc'] * len(row)
         return [''] * len(row)
 
-    # Build a normalizer so 1 .. N maps light->dark with 1 the darkest.
-    # We’ll invert the usual gradient by using vmax=n, vmin=1 and a reversed colormap.
     from matplotlib.colors import LinearSegmentedColormap
     cmap_blue = LinearSegmentedColormap.from_list('white_to_darknavy', ['#ffffff', '#002060'])
     cmap_blue_r = cmap_blue.reversed()
@@ -203,6 +200,7 @@ def style_rank_table(df):
           .background_gradient(cmap=cmap_blue_r, subset=['Off Rank'], vmin=1, vmax=n)
           .background_gradient(cmap=cmap_blue_r, subset=['Def Rank'], vmin=1, vmax=n)
           .format({'Off Rank': '{:d}', 'Def Rank': '{:d}', 'Δ Rank': '{:d}'})
+          .hide(axis="index")                  # 👈 hides the left index column
     )
     return styled
 
@@ -525,40 +523,42 @@ if tab_choice == "🤝 Comparison":
     with csel3:
         neutral = st.checkbox("Neutral site?", value=False)
 
-    # Header with logos + overall/off/def ranks
+    # Header with logos + overall/off/def ranks (side-by-side teams, score below)
     th = team_frame.set_index('Team').loc[home_team]
     ta = team_frame.set_index('Team').loc[away_team]
-
-    lcol, mcol, rcol = st.columns([1.7, 1.4, 1.7])
-
-    def badge(label, value):
-        st.markdown(f"""
-        <div style="display:flex;gap:.5rem;align-items:center;">
+    
+    col_home, col_away = st.columns([1, 1])
+    
+    def badge(label, value, target):
+        target.markdown(f"""
+        <div style="display:flex;gap:.5rem;align-items:center;margin:2px 0;">
             <div style="background:#002060;color:#fff;border-radius:8px;padding:2px 6px;font-size:10px">{label}</div>
             <div style="font-weight:600">{value}</div>
         </div>
         """, unsafe_allow_html=True)
-
-    with lcol:
+    
+    with col_home:
         st.image(th['Logo'], width=90)
         st.markdown(f"### {home_team}")
-        badge("Pwr Rank", th['Pwr Rank'])
-        badge("Off Rank", th['Off Rank'])
-        badge("Def Rank", th['Def Rank'])
-    with mcol:
-        # Projected score
-        total, home_score, away_score = projected_score(team_frame, home_team, away_team, neutral)
-        st.markdown("<div style='text-align:center;font-size:12px;color:#444'>Projected Score</div>", unsafe_allow_html=True)
-        st.markdown(f"<div style='text-align:center;font-size:34px;font-weight:700'>{home_score:.2f} — {away_score:.2f}</div>", unsafe_allow_html=True)
-        st.markdown(f"<div style='text-align:center;font-size:11px;color:#666'>TOTAL {total:.2f}</div>", unsafe_allow_html=True)
-    with rcol:
+        badge("Pwr Rank", th['Pwr Rank'], st)
+        badge("Off Rank", th['Off Rank'], st)
+        badge("Def Rank", th['Def Rank'], st)
+    
+    with col_away:
         st.image(ta['Logo'], width=90)
         st.markdown(f"### {away_team}")
-        badge("Pwr Rank", ta['Pwr Rank'])
-        badge("Off Rank", ta['Off Rank'])
-        badge("Def Rank", ta['Def Rank'])
-
+        badge("Pwr Rank", ta['Pwr Rank'], st)
+        badge("Off Rank", ta['Off Rank'], st)
+        badge("Def Rank", ta['Def Rank'], st)
+    
+    # Projected score centered below both
+    total, home_score, away_score = projected_score(team_frame, home_team, away_team, neutral)
+    st.markdown("<div style='text-align:center;font-size:12px;color:#444;margin-top:.5rem'>Projected Score</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='text-align:center;font-size:34px;font-weight:700'>{home_score:.2f} — {away_score:.2f}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='text-align:center;font-size:11px;color:#666'>TOTAL {total:.2f}</div>", unsafe_allow_html=True)
+    
     st.markdown("---")
+
 
     # Two match-up tables
     home_ball_df, away_ball_df = build_rank_tables(team_frame, home_team, away_team)
