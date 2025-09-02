@@ -74,21 +74,27 @@ if 'selected_team' not in st.session_state:
 
 # --- Build a clean team-level frame from Metrics for ranks + ratings
 def build_team_frame(df_expected, df_metrics, df_logos, df_advanced=None):
+    # Work on copies
     base = df_metrics.copy()
-    # normalize col names a bit
-    base.columns = base.columns.map(lambda c: c.strip())
+    # Normalize column names: force to str, then strip spaces
+    base.columns = [str(c).strip() for c in base.columns]
 
     if df_advanced is not None:
         adv = df_advanced.copy()
-        adv.columns = adv.columns.map(lambda c: c.strip())
+        adv.columns = [str(c).strip() for c in adv.columns]
+        # Normalize Team values too (trailing spaces happen)
         if 'Team' in adv.columns:
+            adv['Team'] = adv['Team'].astype(str).str.strip()
+            base['Team'] = base['Team'].astype(str).str.strip()
             base = base.merge(adv, on='Team', how='left')
 
+    # Required columns from Metrics
     needed = ['Team', 'Power Rating', 'Offensive Rating', 'Defensive Rating']
     missing = [c for c in needed if c not in base.columns]
     if missing:
         raise ValueError(f"Missing columns on Metrics sheet: {missing}")
 
+    # Attach logos
     logos_map = df_logos.set_index('Team')['Image URL'].to_dict()
     base['Logo'] = base['Team'].map(logos_map).fillna('')
 
@@ -98,6 +104,7 @@ def build_team_frame(df_expected, df_metrics, df_logos, df_advanced=None):
     base['Def Rank'] = base['Defensive Rating'].rank(ascending=True,  method='min').astype(int)  # lower is better on defense
 
     return base
+
 
 
 # --- Metric map: Offense column vs matching Defense column on the Metrics sheet
