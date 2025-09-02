@@ -122,39 +122,46 @@ COMPARISON_METRICS = [
 ]
 
 def build_rank_tables(team_df, home, away):
-    """Return two dataframes:
-       - when_home_has_ball: home OFF ranks vs away DEF ranks
-       - when_away_has_ball: away OFF ranks vs home DEF ranks
-       Each row has: Metric | Off Rank | Def Rank | Δ (abs difference)
     """
-    nteams = len(team_df)
+    Returns:
+      when_home_has_ball: home OFF vs away DEF
+      when_away_has_ball: away OFF vs home DEF
+    """
+
+    # <<< Key fix: set index to Team for all rank lookups >>>
+    tdf = team_df.set_index('Team', drop=False)
+    nteams = len(tdf)
 
     def rank_series(col, higher_is_better):
-        s = team_df[col]
+        s = tdf[col]
         return s.rank(ascending=not higher_is_better, method='min').astype(int)
 
-    # Precompute all ranks once (off higher is better; def lower is better)
+    # Precompute all ranks once (offense high→good, defense low→good)
     ranks = {}
     for label, off_col, def_col in COMPARISON_METRICS:
-        if off_col in team_df.columns:
+        if off_col in tdf.columns:
             ranks[off_col] = rank_series(off_col, higher_is_better=True)
-        if def_col in team_df.columns:
+        if def_col in tdf.columns:
             ranks[def_col] = rank_series(def_col, higher_is_better=False)
 
     def one_side(off_team, def_team):
         rows = []
         for label, off_col, def_col in COMPARISON_METRICS:
-            if off_col not in team_df.columns or def_col not in team_df.columns:
+            # Skip missing metric columns gracefully
+            if off_col not in ranks or def_col not in ranks:
+                continue
+            if off_team not in ranks[off_col].index or def_team not in ranks[def_col].index:
                 continue
             off_rank = int(ranks[off_col].loc[off_team])
             def_rank = int(ranks[def_col].loc[def_team])
             diff = abs(off_rank - def_rank)
             rows.append((label, off_rank, def_rank, diff))
         out = pd.DataFrame(rows, columns=['Metric', 'Off Rank', 'Def Rank', 'Δ Rank'])
-        out['N'] = nteams  # for styling limits
+        out['N'] = nteams
         return out
 
     return one_side(home, away), one_side(away, home)
+
 
 def projected_score(team_df, home, away, neutral: bool):
     """Implements your TOTAL and split logic exactly."""
