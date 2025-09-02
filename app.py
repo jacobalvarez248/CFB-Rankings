@@ -74,38 +74,67 @@ if 'selected_team' not in st.session_state:
 
 # --- Build a clean team-level frame from Metrics for ranks + ratings
 def build_team_frame(df_expected, df_metrics, df_logos, df_advanced=None):
-    # Work on copies
+    """
+    Build the unified team frame from Metrics (+ optional Advanced Stats Data).
+    Robust to header variants: tries multiple candidate names for required fields.
+    """
+    import pandas as pd
+
+    # --- copy & normalize column names to strings without surrounding spaces
     base = df_metrics.copy()
-    # Normalize column names: force to str, then strip spaces
     base.columns = [str(c).strip() for c in base.columns]
 
+    # Also normalize 'Team' cell values (Excel sometimes has trailing spaces)
+    if 'Team' in base.columns:
+        base['Team'] = base['Team'].astype(str).str.strip()
+
+    # Optionally merge Advanced sheet
     if df_advanced is not None:
         adv = df_advanced.copy()
         adv.columns = [str(c).strip() for c in adv.columns]
-        # Normalize Team values too (trailing spaces happen)
         if 'Team' in adv.columns:
             adv['Team'] = adv['Team'].astype(str).str.strip()
-            base['Team'] = base['Team'].astype(str).str.strip()
             base = base.merge(adv, on='Team', how='left')
 
-    # Required columns from Metrics
-    needed = ['Team', 'Power Rating', 'Offensive Rating', 'Defensive Rating']
-    missing = [c for c in needed if c not in base.columns]
-    if missing:
-        raise ValueError(f"Missing columns on Metrics sheet: {missing}")
+    # --- helper to resolve columns by trying a list of candidates
+    def resolve_col(df_, candidates, required_name):
+        for c in candidates:
+            if c in df_.columns:
+                return c
+        # If still missing, surface a concise diagnostic with what *does* exist
+        available = ", ".join(list(df_.columns)[:40])  # avoid dumping everything
+        raise ValueError(
+            f"Missing '{required_name}'. Tried {candidates}. "
+            f"First 40 available columns: {available}"
+        )
+
+    # Try common variants for each required field
+    team_col = resolve_col(base, ['Team', 'School', 'Team Name'], 'Team')
+    pwr_col  = resolve_col(base, ['Power Rating', 'Power', 'Pwr', 'Pwr Rating', 'Pwr Rtg'], 'Power Rating')
+    off_col  = resolve_col(base, ['Offensive Rating', 'Offense Rating', 'Off Rtg', 'Offensive', 'off'], 'Offensive Rating')
+    def_col  = resolve_col(base, ['Defensive Rating', 'Defense Rating', 'Def Rtg', 'Defensive', 'def'], 'Defensive Rating')
+
+    # Standardize to canonical column names expected downstream
+    # (keep originals intact too)
+    base = base.rename(columns={
+        team_col: 'Team',
+        pwr_col:  'Power Rating',
+        off_col:  'Offensive Rating',
+        def_col:  'Defensive Rating',
+    })
 
     # Attach logos
     logos_map = df_logos.set_index('Team')['Image URL'].to_dict()
     base['Logo'] = base['Team'].map(logos_map).fillna('')
 
     # Global ranks across ALL teams
+    # Offense: higher is better -> rank descending
+    # Defense: lower  is better -> rank ascending
     base['Pwr Rank'] = base['Power Rating'].rank(ascending=False, method='min').astype(int)
     base['Off Rank'] = base['Offensive Rating'].rank(ascending=False, method='min').astype(int)
-    base['Def Rank'] = base['Defensive Rating'].rank(ascending=True,  method='min').astype(int)  # lower is better on defense
+    base['Def Rank'] = base['Defensive Rating'].rank(ascending=True,  method='min').astype(int)
 
     return base
-
-
 
 # --- Metric map: Offense column vs matching Defense column on the Metrics sheet
 COMPARISON_METRICS = [
