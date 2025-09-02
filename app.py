@@ -140,18 +140,23 @@ def build_rank_tables(team_df, home, away):
       when_home_has_ball: home OFF vs away DEF
       when_away_has_ball: away OFF vs home DEF
     """
+    import pandas as pd
 
-    # <<< Key fix: set index to Team for all rank lookups >>>
     tdf = team_df.set_index('Team', drop=False)
     nteams = len(tdf)
+
+    # Combine: original + extra, so extras appear at the bottom
+    all_metrics = COMPARISON_METRICS + EXTRA_COMPARISON_METRICS
 
     def rank_series(col, higher_is_better):
         s = tdf[col]
         return s.rank(ascending=not higher_is_better, method='min').astype(int)
 
-    # Precompute all ranks once (offense high→good, defense low→good)
+    # Precompute ranks respecting the rule:
+    #   offense: higher number = better (ascending=False)
+    #   defense: lower  number = better (ascending=True)
     ranks = {}
-    for label, off_col, def_col in COMPARISON_METRICS:
+    for label, off_col, def_col in all_metrics:
         if off_col in tdf.columns:
             ranks[off_col] = rank_series(off_col, higher_is_better=True)
         if def_col in tdf.columns:
@@ -159,8 +164,7 @@ def build_rank_tables(team_df, home, away):
 
     def one_side(off_team, def_team):
         rows = []
-        for label, off_col, def_col in COMPARISON_METRICS:
-            # Skip missing metric columns gracefully
+        for label, off_col, def_col in all_metrics:
             if off_col not in ranks or def_col not in ranks:
                 continue
             if off_team not in ranks[off_col].index or def_team not in ranks[def_col].index:
@@ -174,7 +178,6 @@ def build_rank_tables(team_df, home, away):
         return out
 
     return one_side(home, away), one_side(away, home)
-
 
 def projected_score(team_df, home, away, neutral: bool):
     """
