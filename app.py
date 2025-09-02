@@ -670,7 +670,7 @@ if tab_choice == "🤝 Comparison":
     home_ball_df, away_ball_df = build_rank_tables(team_frame, home_team, away_team)
 
     st.markdown(f"### When **{home_team}** has the ball …")
-    st.caption("Offensive rank (left) vs opponent defensive rank (right). Rows shaded light blue = closest 5 (parity). Light orange = furthest 5 (advantage/disadvantage).")
+    st.caption("Offensive rank (left) vs opponent defensive rank (right).")
     st.write(style_rank_table(home_ball_df).to_html(escape=False), unsafe_allow_html=True)
 
     st.markdown(f"### When **{away_team}** has the ball …")
@@ -683,6 +683,11 @@ if tab_choice == "🤝 Comparison":
       <b>Color scale:</b> rank #1 darkest blue across all teams; higher rank numbers lighter.<br>
       <b>Parity:</b> 5 smallest |Δ Rank| across both tables highlighted light blue.<br>
       <b>Advantage:</b> 5 largest |Δ Rank| across both tables highlighted light orange.
+      <b>Expected Points (EP)</b> Each yardline is assigned a point value and measures the number of points that would be expected to be scored based on down, distance, and field position
+      <b>Expected Points Added (EPA)</b> Takes the EP from before a play and subtracts it from the EP after the play
+      <b>Explosiveness</b> Measures the average EPA on plays which were marked as successful
+      <b>Success Rate</b> Determines the success of a play. Successful plays meet one of the following criteria: 1st downs which gain at least 50% of the yards to go. 2nd downs which gain at least 70% of the yards go. 3rd and 4th downs which gain at least 100% of the yards to go
+      
     </div>
     """, unsafe_allow_html=True)
 
