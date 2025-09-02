@@ -164,17 +164,39 @@ def build_rank_tables(team_df, home, away):
 
 
 def projected_score(team_df, home, away, neutral: bool):
-    """Implements your TOTAL and split logic exactly."""
-    h = team_df.set_index('Team').loc[home]
-    a = team_df.set_index('Team').loc[away]
+    """
+    Project scores using Metrics sheet columns:
+      - OFF from column 'off' (Excel DN)
+      - DEF from column 'def' (Excel DO)
+    Falls back to 'Offensive Rating' / 'Defensive Rating' if needed.
+    """
+    # pick columns robustly
+    OFF_CANDIDATES = ['off', 'Off', 'OFF', 'Offensive Rating']
+    DEF_CANDIDATES = ['def', 'Def', 'DEF', 'Defensive Rating']
 
-    total = (h['Offensive Rating'] + a['Defensive Rating'])/2.0 + (a['Offensive Rating'] + h['Defensive Rating'])/2.0
+    def pick_col(candidates):
+        for c in candidates:
+            if c in team_df.columns:
+                return c
+        raise KeyError(f"None of these columns were found: {candidates}")
 
+    off_col = pick_col(OFF_CANDIDATES)
+    def_col = pick_col(DEF_CANDIDATES)
+
+    tdf = team_df.set_index('Team', drop=False)
+    h = tdf.loc[home]
+    a = tdf.loc[away]
+
+    # TOTAL = avg(home OFF vs away DEF, away OFF vs home DEF)
+    total = (h[off_col] + a[def_col]) / 2.0 + (a[off_col] + h[def_col]) / 2.0
+
+    # Projected difference = home PWR - away PWR + 2.5 (if not neutral)
     projected_diff = (h['Power Rating'] - a['Power Rating']) + (0 if neutral else 2.5)
 
-    home_score = total/2.0 + projected_diff/2.0
-    away_score = total/2.0 - projected_diff/2.0
+    home_score = total / 2.0 + projected_diff / 2.0
+    away_score = total / 2.0 - projected_diff / 2.0
     return float(total), float(home_score), float(away_score)
+
 
 def style_rank_table(df):
     """Blue gradient where rank #1 is darkest; also badge the 5 closest and 5 furthest by Δ Rank."""
