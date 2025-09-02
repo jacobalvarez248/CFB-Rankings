@@ -533,27 +533,31 @@ if tab_choice == "🤝 Comparison":
     st.markdown("## 🤝 Comparison")
 
     # Build unified frame once
-    team_frame = build_team_frame(df, metrics_df, logos_df)  # df = Expected Wins table already cleaned in your app
+    team_frame = build_team_frame(df, metrics_df, logos_df)
 
     all_teams = sorted(team_frame['Team'].tolist())
 
     csel1, csel2, csel3 = st.columns([2,2,1])
     with csel1:
-        home_team = st.selectbox("Home Team", all_teams, index=all_teams.index(st.session_state.get('selected_team', all_teams[0])) if st.session_state.get('selected_team') in all_teams else 0)
+        home_team = st.selectbox(
+            "Home Team",
+            all_teams,
+            index=all_teams.index(st.session_state.get('selected_team', all_teams[0]))
+            if st.session_state.get('selected_team') in all_teams else 0
+        )
     with csel2:
         away_team = st.selectbox("Away Team", all_teams, index=0 if all_teams[0] != home_team else 1)
     with csel3:
         neutral = st.checkbox("Neutral site?", value=False)
 
     # --- SIDE-BY-SIDE TEAM CARDS (always fit) + SCORE BELOW ---
-
     th = team_frame.set_index('Team').loc[home_team]
     ta = team_frame.set_index('Team').loc[away_team]
     total, home_score, away_score = projected_score(team_frame, home_team, away_team, neutral)
-    
+
     home_logo = th['Logo'] or ""
     away_logo = ta['Logo'] or ""
-    
+
     def team_html(team, logo, pwr, off, deff):
         return f"""
           <div class="team-card">
@@ -566,23 +570,23 @@ if tab_choice == "🤝 Comparison":
             <div class="badges"><span class="badge">Def</span><span class="val">{deff}</span></div>
           </div>
         """
-    
+
     home_html = team_html(home_team, home_logo, th['Pwr Rank'], th['Off Rank'], th['Def Rank'])
     away_html = team_html(away_team, away_logo, ta['Pwr Rank'], ta['Off Rank'], ta['Def Rank'])
-    
+
     st.markdown(
         f"""
         <div class="team-row">
           {home_html}
           {away_html}
         </div>
-    
+
         <div class="score-block">
           <div class="score-label">Projected Score</div>
           <div class="score-main">{home_score:.2f} — {away_score:.2f}</div>
           <div class="score-sub">TOTAL {total:.2f}</div>
         </div>
-    
+
         <style>
           .team-row {{
             display: flex;
@@ -591,12 +595,9 @@ if tab_choice == "🤝 Comparison":
             gap: 16px;
             margin-bottom: 8px;
           }}
-    
-          /* Card as a 4-row grid:
-             [fixed header] + [3 fixed metric rows] so Pwr/Off/Def align */
           .team-card {{
             display: grid;
-            grid-template-rows: 112px 28px 28px 28px;  /* header + 3 metric rows */
+            grid-template-rows: 112px 28px 28px 28px;
             flex: 1 1 160px;
             max-width: 260px;
             background: #f8f9fb;
@@ -604,8 +605,6 @@ if tab_choice == "🤝 Comparison":
             padding: 12px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.08);
           }}
-    
-          /* Fixed-height header centers contents */
           .team-head {{
             display: flex;
             flex-direction: column;
@@ -613,45 +612,35 @@ if tab_choice == "🤝 Comparison":
             justify-content: center;
             height: 100%;
           }}
-    
           .team-logo {{
             width: 64px; height: 64px; object-fit: contain; margin-bottom: 4px;
           }}
-    
-          /* Clamp long names to 2 lines */
           .team-name {{
             margin: 0; font-size: 16px; text-align: center; line-height: 1.15;
             display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
             max-width: 200px;
           }}
-    
-          /* Metric rows with consistent structure */
           .badges {{
             display: grid;
-            grid-template-columns: 42px 1fr; /* same columns on both cards */
+            grid-template-columns: 42px 1fr;
             align-items: center;
             justify-content: center;
             column-gap: 8px;
             margin: 0;
           }}
-    
           .badge {{
             background:#002060; color:#fff; border-radius:6px; padding:2px 5px; font-size:10px;
             text-align: center;
           }}
-    
           .val {{
             font-weight: 600; font-size: 13px; text-align: left;
           }}
-    
           .score-block {{
             text-align:center; margin: 10px 0;
           }}
           .score-label {{ font-size:12px; color:#444; }}
           .score-main  {{ font-size: 30px; font-weight: 700; }}
           .score-sub   {{ font-size: 11px; color: #666; }}
-    
-          /* Slightly smaller on very small phones */
           @media (max-width: 480px) {{
             .team-card {{ grid-template-rows: 100px 26px 26px 26px; }}
             .team-logo {{ width: 50px; height: 50px; }}
@@ -662,20 +651,39 @@ if tab_choice == "🤝 Comparison":
         """,
         unsafe_allow_html=True
     )
-    
-    st.markdown("---")
 
+    st.markdown("---")
 
     # Two match-up tables
     home_ball_df, away_ball_df = build_rank_tables(team_frame, home_team, away_team)
 
+    # Scoped CSS only for comparison tables
+    st.markdown("""
+    <style>
+    .comparison-table table th,
+    .comparison-table table td {
+      white-space: nowrap !important;
+      text-overflow: ellipsis;
+      overflow: hidden;
+      font-size: 11px !important;
+      padding: 4px 6px !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     st.markdown(f"### When **{home_team}** has the ball …")
-    st.caption("Offensive rank (left) vs opponent defensive rank (right).")
-    st.write(style_rank_table(home_ball_df).to_html(escape=False), unsafe_allow_html=True)
+    st.caption("Offensive rank (left) vs opponent defensive rank (right). Rows shaded light blue = closest 5 (parity). Light orange = furthest 5 (advantage/disadvantage).")
+    st.markdown(
+        f"<div class='comparison-table'>{style_rank_table(home_ball_df).to_html(escape=False)}</div>",
+        unsafe_allow_html=True
+    )
 
     st.markdown(f"### When **{away_team}** has the ball …")
     st.caption("Offensive rank (left) vs opponent defensive rank (right).")
-    st.write(style_rank_table(away_ball_df).to_html(escape=False), unsafe_allow_html=True)
+    st.markdown(
+        f"<div class='comparison-table'>{style_rank_table(away_ball_df).to_html(escape=False)}</div>",
+        unsafe_allow_html=True
+    )
 
     # Small legend
     st.markdown("""
