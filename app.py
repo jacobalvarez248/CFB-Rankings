@@ -672,7 +672,7 @@ if tab_choice == "🤝 Comparison":
     """, unsafe_allow_html=True)
 
     st.markdown(f"### When **{home_team}** has the ball …")
-    st.caption("Offensive rank (left) vs opponent defensive rank (right). Rows shaded light blue = closest 5 (parity). Light orange = furthest 5 (advantage/disadvantage).")
+    st.caption("Offensive rank (left) vs opponent defensive rank (right).")
     st.markdown(
         f"<div class='comparison-table'>{style_rank_table(home_ball_df).to_html(escape=False)}</div>",
         unsafe_allow_html=True
