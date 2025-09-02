@@ -6,27 +6,18 @@ import streamlit.components.v1 as components
 import numpy as np
 
 st.set_page_config(page_title="CFB Rankings", layout="wide", initial_sidebar_state="expanded")
-def _clean_numeric_series(s):
-    # Convert typical Excel-ish text numbers like "41.2%" or "1,234" to real numbers
-    return pd.to_numeric(
-        s.astype(str)
-         .str.replace('\u200b', '', regex=False)  # zero-width space
-         .str.replace(',', '', regex=False)
-         .str.replace('%', '', regex=False)
-         .str.strip(),
-        errors='coerce'
-    )
 
 @st.cache_data
 def load_data():
     expected_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Expected Wins', header=1)
     logos_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Logos', header=1)
     metrics_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Metrics', header=0)
-    advanced_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Advanced Stats Data', header=0)  # 👈 NEW
+    
+    # Fix column naming issue
     metrics_df.reset_index(inplace=True)
-    return expected_df, logos_df, metrics_df, advanced_df
+    return expected_df, logos_df, metrics_df
 
-df, logos_df, metrics_df, advanced_df = load_data()
+df, logos_df, metrics_df = load_data()
 
 def deduplicate_columns(columns):
     seen = {}
@@ -83,136 +74,25 @@ if 'selected_team' not in st.session_state:
     st.session_state['selected_team'] = preselect_team if preselect_team else df.index[0]
 
 # --- Build a clean team-level frame from Metrics for ranks + ratings
-def build_team_frame(df_expected, df_metrics, df_logos, df_advanced=None):
-    """
-    Build unified team frame from Metrics (+ optional Advanced).
-    Robust to header variants and capitalization. Falls back to df_expected
-    for Power Rating when missing in Metrics. Also allows using 'off'/'def'
-    columns if Offensive/Defensive Rating aren't present.
-    """
-    import re
-    import pandas as pd
-
-    # --- copies + normalize column names (string + strip)
+def build_team_frame(df_expected, df_metrics, df_logos):
+    # keep only what we need + attach logos
     base = df_metrics.copy()
-    base.columns = [str(c).strip() for c in base.columns]
-    if 'Team' in base.columns:
-        base['Team'] = base['Team'].astype(str).str.strip()
+    # Ratings expected to exist in Metrics sheet
+    # 'Team', 'Power Rating', 'Offensive Rating', 'Defensive Rating', plus per-metric cols (Off./Def. …)
+    needed = ['Team', 'Power Rating', 'Offensive Rating', 'Defensive Rating']
+    missing = [c for c in needed if c not in base.columns]
+    if missing:
+        raise ValueError(f"Missing columns on Metrics sheet: {missing}")
 
-    if df_advanced is not None:
-        adv = df_advanced.copy()
-        adv.columns = [str(c).strip() for c in adv.columns]
-        if 'Team' in adv.columns:
-            adv['Team'] = adv['Team'].astype(str).str.strip()
-            base = base.merge(adv, on='Team', how='left')
-
-    # normalize expected df columns too (for fallback)
-    df_exp = df_expected.copy()
-    df_exp.columns = [str(c).strip() for c in df_exp.columns]
-    if 'Team' in df_exp.columns:
-        df_exp['Team'] = df_exp['Team'].astype(str).str.strip()
-
-    # Build a case-insensitive lookup map: cleaned -> original
-    def clean(s: str) -> str:
-        # lower, remove extra spaces and some punctuation for robust matching
-        s2 = re.sub(r'\s+', ' ', s.strip().lower())
-        s2 = s2.replace('.', '')
-        return s2
-
-    col_map = {clean(c): c for c in base.columns}
-
-    def resolve_exact(candidates):
-        """Try exact alias list (case-insensitive, punctuation/space tolerant)."""
-        for alias in candidates:
-            key = clean(alias)
-            if key in col_map:
-                return col_map[key]
-        return None
-
-    def resolve_heuristic(contains_all, optional_any=None):
-        """
-        Find first column whose cleaned name contains ALL tokens in `contains_all`
-        and, if provided, ANY token in `optional_any`.
-        """
-        for k, orig in col_map.items():
-            if all(tok in k for tok in contains_all) and (optional_any is None or any(tok in k for tok in optional_any)):
-                return orig
-        return None
-
-    # --- Resolve Team col
-    team_col = resolve_exact(['Team', 'School', 'Team Name'])
-    if not team_col:
-        available = ", ".join(list(base.columns)[:40])
-        raise ValueError(f"Missing 'Team' column. First 40 available columns: {available}")
-
-    # --- Resolve Power Rating: try metrics first; else fallback from df_expected
-    power_col = resolve_exact(['Power Rating', 'Power', 'Pwr Rating', 'Pwr Rtg'])
-    if not power_col:
-        power_col = resolve_heuristic(['power'], ['rtg', 'rating'])  # e.g., 'power rtg', 'power rating'
-    if not power_col:
-        # fallback from Expected Wins table
-        # join in Pwr Rtg if present
-        pwr_from_exp = None
-        for cand in ['Power Rating', 'Pwr Rtg', 'Pwr', 'Pwr Rating']:
-            if cand in df_exp.columns:
-                pwr_from_exp = cand
-                break
-        if pwr_from_exp:
-            base = base.merge(df_exp[['Team', pwr_from_exp]], on='Team', how='left', suffixes=('', '_exp'))
-            power_col = pwr_from_exp
-        else:
-            available = ", ".join(list(base.columns)[:40])
-            raise ValueError(
-                "Could not find 'Power Rating' (nor fallback in Expected Wins). "
-                f"Tried aliases. First 40 available columns: {available}"
-            )
-
-    # --- Resolve Offensive Rating (or fallback to 'off')
-    off_col = resolve_exact(['Offensive Rating', 'Offense Rating', 'Off Rtg'])
-    if not off_col:
-        off_col = resolve_heuristic(['offens',], ['rtg','rating'])
-    if not off_col:
-        # allow fallback to compact columns used elsewhere
-        off_col = resolve_exact(['off', 'Off', 'OFF'])
-    if not off_col:
-        available = ", ".join(list(base.columns)[:40])
-        raise ValueError(
-            "Could not find Offensive Rating (nor 'off'). "
-            f"First 40 available columns: {available}"
-        )
-
-    # --- Resolve Defensive Rating (or fallback to 'def')
-    def_col = resolve_exact(['Defensive Rating', 'Defense Rating', 'Def Rtg'])
-    if not def_col:
-        def_col = resolve_heuristic(['defens',], ['rtg','rating'])
-    if not def_col:
-        def_col = resolve_exact(['def', 'Def', 'DEF'])
-    if not def_col:
-        available = ", ".join(list(base.columns)[:40])
-        raise ValueError(
-            "Could not find Defensive Rating (nor 'def'). "
-            f"First 40 available columns: {available}"
-        )
-
-    # Standardize the resolved columns to canonical names the app uses later
-    rename_map = {}
-    if team_col != 'Team':                 rename_map[team_col] = 'Team'
-    if power_col != 'Power Rating':        rename_map[power_col] = 'Power Rating'
-    if off_col != 'Offensive Rating':      rename_map[off_col] = 'Offensive Rating'
-    if def_col != 'Defensive Rating':      rename_map[def_col] = 'Defensive Rating'
-    base = base.rename(columns=rename_map)
-
-    # Attach logos
     logos_map = df_logos.set_index('Team')['Image URL'].to_dict()
     base['Logo'] = base['Team'].map(logos_map).fillna('')
 
     # Global ranks across ALL teams
     base['Pwr Rank'] = base['Power Rating'].rank(ascending=False, method='min').astype(int)
-    base['Off Rank'] = base['Offensive Rating'].rank(ascending=False, method='min').astype(int)  # higher better
-    base['Def Rank'] = base['Defensive Rating'].rank(ascending=True,  method='min').astype(int)  # lower  better
+    base['Off Rank'] = base['Offensive Rating'].rank(ascending=False, method='min').astype(int)
+    base['Def Rank'] = base['Defensive Rating'].rank(ascending=True,  method='min').astype(int)  # lower is better on defense
 
     return base
-
 
 # --- Metric map: Offense column vs matching Defense column on the Metrics sheet
 COMPARISON_METRICS = [
@@ -240,57 +120,25 @@ COMPARISON_METRICS = [
     ("Pass Explosiveness",   "Off. Pass Explosivenes",  "Def. Pass Explosivenes"),
     ("Rush Explosiveness",   "Off. Rush Explosiveness", "Def. Rush Explosiveness"),
 ]
-# --- Extra metrics from "Advanced Stats Data" (appended at the bottom)
-EXTRA_COMPARISON_METRICS = [
-    ("Stuff Rate",                 "Offense StuffRate",                    "Defense StuffRate"),
-    ("Pts./Opportunity",           "Offense PointsPerOpportunity",         "Defense PointsPerOpportunity"),
-    ("Field Position Avg. Start",  "Offense FieldPosition AverageStart",   "Defense FieldPosition AverageStart"),
-    ("Havoc",                      "Offense Havoc Total",                  "Defense Havoc Total"),
-]
 
 def build_rank_tables(team_df, home, away):
     """
-    NaN-safe ranks; cleans Advanced Stats text columns (%, commas) first.
+    Returns:
+      when_home_has_ball: home OFF vs away DEF
+      when_away_has_ball: away OFF vs home DEF
     """
-    import pandas as pd
 
+    # <<< Key fix: set index to Team for all rank lookups >>>
     tdf = team_df.set_index('Team', drop=False)
     nteams = len(tdf)
 
-    # Combine base + any extra metrics (Advanced Stats)
-    all_metrics = COMPARISON_METRICS + (EXTRA_COMPARISON_METRICS if 'EXTRA_COMPARISON_METRICS' in globals() else [])
-
-    # --- Clean the 8 Advanced Stats columns you specified (if present)
-    adv_cols_to_clean = [
-        "Offense StuffRate",
-        "Offense PointsPerOpportunity",
-        "Offense FieldPosition AverageStart",
-        "Offense Havoc Total",
-        "Defense StuffRate",
-        "Defense PointsPerOpportunity",
-        "Defense FieldPosition AverageStart",
-        "Defense Havoc Total",
-    ]
-    for c in adv_cols_to_clean:
-        if c in tdf.columns:
-            tdf[c] = _clean_numeric_series(tdf[c])
-
-    # Also coerce any other metric columns just in case
-    needed_cols = set()
-    for _, off_col, def_col in all_metrics:
-        if off_col in tdf.columns: needed_cols.add(off_col)
-        if def_col in tdf.columns: needed_cols.add(def_col)
-    for c in needed_cols:
-        if c not in adv_cols_to_clean:  # avoid double work
-            tdf[c] = pd.to_numeric(tdf[c], errors='coerce')
-
     def rank_series(col, higher_is_better):
-        r = tdf[col].rank(ascending=not higher_is_better, method='min', na_option='keep')
-        return r.astype('Int64')  # nullable ints (no crash on NaN)
+        s = tdf[col]
+        return s.rank(ascending=not higher_is_better, method='min').astype(int)
 
-    # Precompute ranks (offense high→good, defense low→good)
+    # Precompute all ranks once (offense high→good, defense low→good)
     ranks = {}
-    for _, off_col, def_col in all_metrics:
+    for label, off_col, def_col in COMPARISON_METRICS:
         if off_col in tdf.columns:
             ranks[off_col] = rank_series(off_col, higher_is_better=True)
         if def_col in tdf.columns:
@@ -298,31 +146,22 @@ def build_rank_tables(team_df, home, away):
 
     def one_side(off_team, def_team):
         rows = []
-        for label, off_col, def_col in all_metrics:
+        for label, off_col, def_col in COMPARISON_METRICS:
+            # Skip missing metric columns gracefully
             if off_col not in ranks or def_col not in ranks:
                 continue
-            off_val = ranks[off_col].get(off_team, pd.NA)
-            def_val = ranks[def_col].get(def_team, pd.NA)
-            if pd.isna(off_val) or pd.isna(def_val):
+            if off_team not in ranks[off_col].index or def_team not in ranks[def_col].index:
                 continue
-            off_rank = int(off_val)
-            def_rank = int(def_val)
+            off_rank = int(ranks[off_col].loc[off_team])
+            def_rank = int(ranks[def_col].loc[def_team])
             diff = abs(off_rank - def_rank)
             rows.append((label, off_rank, def_rank, diff))
         out = pd.DataFrame(rows, columns=['Metric', 'Off Rank', 'Def Rank', 'Δ Rank'])
         out['N'] = nteams
         return out
 
-    # (Optional) quick diagnostics, comment out if noisy:
-    # for c in adv_cols_to_clean:
-    #     if c in tdf.columns:
-    #         nunique = tdf[c].nunique(dropna=True)
-    #         if nunique == 0:
-    #             st.info(f"‘{c}’ has no numeric values after cleaning.")
-    #         elif nunique == 1:
-    #             st.info(f"‘{c}’ has a single unique value across teams (all tied).")
-
     return one_side(home, away), one_side(away, home)
+
 
 def projected_score(team_df, home, away, neutral: bool):
     """
@@ -694,7 +533,7 @@ if tab_choice == "🤝 Comparison":
     st.markdown("## 🤝 Comparison")
 
     # Build unified frame once
-    team_frame = build_team_frame(df, metrics_df, logos_df, advanced_df) 
+    team_frame = build_team_frame(df, metrics_df, logos_df)
 
     all_teams = sorted(team_frame['Team'].tolist())
 
