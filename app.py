@@ -3,6 +3,7 @@ import pandas as pd
 from matplotlib.colors import LinearSegmentedColormap
 from urllib.parse import unquote
 import streamlit.components.v1 as components
+import numpy as np
 
 st.set_page_config(page_title="CFB Rankings", layout="wide", initial_sidebar_state="expanded")
 
@@ -72,17 +73,143 @@ preselect_team = unquote(query_params.get("selected_team", ""))
 if 'selected_team' not in st.session_state:
     st.session_state['selected_team'] = preselect_team if preselect_team else df.index[0]
 
+# --- Build a clean team-level frame from Metrics for ranks + ratings
+def build_team_frame(df_expected, df_metrics, df_logos):
+    # keep only what we need + attach logos
+    base = df_metrics.copy()
+    # Ratings expected to exist in Metrics sheet
+    # 'Team', 'Power Rating', 'Offensive Rating', 'Defensive Rating', plus per-metric cols (Off./Def. …)
+    needed = ['Team', 'Power Rating', 'Offensive Rating', 'Defensive Rating']
+    missing = [c for c in needed if c not in base.columns]
+    if missing:
+        raise ValueError(f"Missing columns on Metrics sheet: {missing}")
+
+    logos_map = df_logos.set_index('Team')['Image URL'].to_dict()
+    base['Logo'] = base['Team'].map(logos_map).fillna('')
+
+    # Global ranks across ALL teams
+    base['Pwr Rank'] = base['Power Rating'].rank(ascending=False, method='min').astype(int)
+    base['Off Rank'] = base['Offensive Rating'].rank(ascending=False, method='min').astype(int)
+    base['Def Rank'] = base['Defensive Rating'].rank(ascending=True,  method='min').astype(int)  # lower is better on defense
+
+    return base
+
+# --- Metric map: Offense column vs matching Defense column on the Metrics sheet
+COMPARISON_METRICS = [
+    # Yards / Game
+    ("Yards/Game",           "Off. Yds/Game",           "Def. Yds/Game"),
+    ("Pass Yards/Game",      "Off. Pass Yds/Game",      "Def. Pass Yds/Game"),
+    ("Rush Yards/Game",      "Off. Rush Yds/Game",      "Def. Rush Yds/Game"),
+    ("Points/Game",          "Off. Points/Game",        "Def. Points/Game"),
+    # Yards / Play
+    ("Yards/Play",           "Off. Yds/Play",           "Def. Yds/Play"),
+    ("Pass Yards/Play",      "Off. Pass Yds/Play",      "Def. Pass Yds/Play"),
+    ("Rush Yards/Play",      "Off. Rush Yds/Play",      "Def. Rush Yds/Play"),
+    ("Points/Play",          "Off. Points/Play",        "Def. Points/Play"),
+    # EPA / Play
+    ("EPA/Play",             "Off. EPA/Play",           "Def. EPA/Play"),
+    ("Pass EPA/Play",        "Off. Pass EPA/Play",      "Def. Pass EPA/Play"),
+    ("Rush EPA/Play",        "Off. Rush EPA/Play",      "Def. Rush EPA/Play"),
+    ("Pts/Scoring Opp.",     "Off. Points/Scoring Opp.", "Def. Points/Scoring Opp."),
+    # Success Rate (percent)
+    ("Success Rate",         "Off. Success Rate",       "Def. Success Rate"),
+    ("Pass Success Rate",    "Off. Pass Success Rate",  "Def. Pass Success Rate"),
+    ("Rush Success Rate",    "Off. Rush Success Rate",  "Def. Rush Success Rate"),
+    # Explosiveness (rate)
+    ("Explosiveness",        "Off. Explosiveness",      "Def. Explosiveness"),
+    ("Pass Explosiveness",   "Off. Pass Explosivenes",  "Def. Pass Explosivenes"),
+    ("Rush Explosiveness",   "Off. Rush Explosiveness", "Def. Rush Explosiveness"),
+]
+
+def build_rank_tables(team_df, home, away):
+    """Return two dataframes:
+       - when_home_has_ball: home OFF ranks vs away DEF ranks
+       - when_away_has_ball: away OFF ranks vs home DEF ranks
+       Each row has: Metric | Off Rank | Def Rank | Δ (abs difference)
+    """
+    nteams = len(team_df)
+
+    def rank_series(col, higher_is_better):
+        s = team_df[col]
+        return s.rank(ascending=not higher_is_better, method='min').astype(int)
+
+    # Precompute all ranks once (off higher is better; def lower is better)
+    ranks = {}
+    for label, off_col, def_col in COMPARISON_METRICS:
+        if off_col in team_df.columns:
+            ranks[off_col] = rank_series(off_col, higher_is_better=True)
+        if def_col in team_df.columns:
+            ranks[def_col] = rank_series(def_col, higher_is_better=False)
+
+    def one_side(off_team, def_team):
+        rows = []
+        for label, off_col, def_col in COMPARISON_METRICS:
+            if off_col not in team_df.columns or def_col not in team_df.columns:
+                continue
+            off_rank = int(ranks[off_col].loc[off_team])
+            def_rank = int(ranks[def_col].loc[def_team])
+            diff = abs(off_rank - def_rank)
+            rows.append((label, off_rank, def_rank, diff))
+        out = pd.DataFrame(rows, columns=['Metric', 'Off Rank', 'Def Rank', 'Δ Rank'])
+        out['N'] = nteams  # for styling limits
+        return out
+
+    return one_side(home, away), one_side(away, home)
+
+def projected_score(team_df, home, away, neutral: bool):
+    """Implements your TOTAL and split logic exactly."""
+    h = team_df.set_index('Team').loc[home]
+    a = team_df.set_index('Team').loc[away]
+
+    total = (h['Offensive Rating'] + a['Defensive Rating'])/2.0 + (a['Offensive Rating'] + h['Defensive Rating'])/2.0
+
+    projected_diff = (h['Power Rating'] - a['Power Rating']) + (0 if neutral else 2.5)
+
+    home_score = total/2.0 + projected_diff/2.0
+    away_score = total/2.0 - projected_diff/2.0
+    return float(total), float(home_score), float(away_score)
+
+def style_rank_table(df):
+    """Blue gradient where rank #1 is darkest; also badge the 5 closest and 5 furthest by Δ Rank."""
+    n = int(df['N'].iloc[0])
+    # Create parity/advantage flags
+    closest_idx = df.nsmallest(5, 'Δ Rank').index
+    furthest_idx = df.nlargest(5, 'Δ Rank').index
+
+    def highlight_rows(row):
+        if row.name in closest_idx:
+            return ['background-color: #e6f0ff'] * len(row)  # light blue band
+        if row.name in furthest_idx:
+            return ['background-color: #ffe9cc'] * len(row)  # light orange band
+        return [''] * len(row)
+
+    # Build a normalizer so 1 .. N maps light->dark with 1 the darkest.
+    # We’ll invert the usual gradient by using vmax=n, vmin=1 and a reversed colormap.
+    from matplotlib.colors import LinearSegmentedColormap
+    cmap_blue = LinearSegmentedColormap.from_list('white_to_darknavy', ['#ffffff', '#002060'])
+    cmap_blue_r = cmap_blue.reversed()
+
+    styled = (
+        df.drop(columns=['N'])
+          .style
+          .apply(highlight_rows, axis=1)
+          .background_gradient(cmap=cmap_blue_r, subset=['Off Rank'], vmin=1, vmax=n)
+          .background_gradient(cmap=cmap_blue_r, subset=['Def Rank'], vmin=1, vmax=n)
+          .format({'Off Rank': '{:d}', 'Def Rank': '{:d}', 'Δ Rank': '{:d}'})
+    )
+    return styled
+
 # Tab selector with auto-switch logic
 query_params = st.query_params
 selected_team = query_params.get("selected_team", "")
 default_tab = "📊 Team Dashboards" if selected_team else "🏆 Rankings"
 
 tab_choice = st.radio(
-    " ", 
-    ["🏆 Rankings", "📈 Metrics", "📊 Team Dashboards"],
-    horizontal=True, 
-    label_visibility="collapsed", 
-    index=0 if default_tab == "🏆 Rankings" else (2 if default_tab == "📊 Team Dashboards" else 1))
+    " ",
+    ["🏆 Rankings", "📈 Metrics", "📊 Team Dashboards", "🤝 Comparison"],
+    horizontal=True,
+    label_visibility="collapsed",
+    index=0 if default_tab == "🏆 Rankings" else (3 if default_tab == "🤝 Comparison" else (2 if default_tab == "📊 Team Dashboards" else 1)))
 
 #-----------------------------------------------------RANKINGS TAB------------------------------------------------
 if tab_choice == "🏆 Rankings":
@@ -373,3 +500,76 @@ if tab_choice == "📊 Team Dashboards":
     team_data = df.loc[[selected_team]]
     st.markdown(f"### Dashboard for {selected_team}")
     st.dataframe(team_data.T, use_container_width=True)
+
+# ----------------------------------------------------- COMPARISON TAB ------------------------------------------------
+if tab_choice == "🤝 Comparison":
+    st.markdown("## 🤝 Comparison")
+
+    # Build unified frame once
+    team_frame = build_team_frame(df, metrics_df, logos_df)  # df = Expected Wins table already cleaned in your app
+
+    all_teams = sorted(team_frame['Team'].tolist())
+
+    csel1, csel2, csel3 = st.columns([2,2,1])
+    with csel1:
+        home_team = st.selectbox("Home Team", all_teams, index=all_teams.index(st.session_state.get('selected_team', all_teams[0])) if st.session_state.get('selected_team') in all_teams else 0)
+    with csel2:
+        away_team = st.selectbox("Away Team", all_teams, index=0 if all_teams[0] != home_team else 1)
+    with csel3:
+        neutral = st.checkbox("Neutral site?", value=False)
+
+    # Header with logos + overall/off/def ranks
+    th = team_frame.set_index('Team').loc[home_team]
+    ta = team_frame.set_index('Team').loc[away_team]
+
+    lcol, mcol, rcol = st.columns([1.7, 1.4, 1.7])
+
+    def badge(label, value):
+        st.markdown(f"""
+        <div style="display:flex;gap:.5rem;align-items:center;">
+            <div style="background:#002060;color:#fff;border-radius:8px;padding:2px 6px;font-size:10px">{label}</div>
+            <div style="font-weight:600">{value}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with lcol:
+        st.image(th['Logo'], width=90)
+        st.markdown(f"### {home_team}")
+        badge("Pwr Rank", th['Pwr Rank'])
+        badge("Off Rank", th['Off Rank'])
+        badge("Def Rank", th['Def Rank'])
+    with mcol:
+        # Projected score
+        total, home_score, away_score = projected_score(team_frame, home_team, away_team, neutral)
+        st.markdown("<div style='text-align:center;font-size:12px;color:#444'>Projected Score</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align:center;font-size:34px;font-weight:700'>{home_score:.2f} — {away_score:.2f}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align:center;font-size:11px;color:#666'>TOTAL {total:.2f}</div>", unsafe_allow_html=True)
+    with rcol:
+        st.image(ta['Logo'], width=90)
+        st.markdown(f"### {away_team}")
+        badge("Pwr Rank", ta['Pwr Rank'])
+        badge("Off Rank", ta['Off Rank'])
+        badge("Def Rank", ta['Def Rank'])
+
+    st.markdown("---")
+
+    # Two match-up tables
+    home_ball_df, away_ball_df = build_rank_tables(team_frame, home_team, away_team)
+
+    st.markdown(f"### When **{home_team}** has the ball …")
+    st.caption("Offensive rank (left) vs opponent defensive rank (right). Rows shaded light blue = closest 5 (parity). Light orange = furthest 5 (advantage/disadvantage).")
+    st.write(style_rank_table(home_ball_df).to_html(escape=False), unsafe_allow_html=True)
+
+    st.markdown(f"### When **{away_team}** has the ball …")
+    st.caption("Offensive rank (left) vs opponent defensive rank (right).")
+    st.write(style_rank_table(away_ball_df).to_html(escape=False), unsafe_allow_html=True)
+
+    # Small legend
+    st.markdown("""
+    <div style="font-size:11px;color:#555;margin-top:.5rem">
+      <b>Color scale:</b> rank #1 darkest blue across all teams; higher rank numbers lighter.<br>
+      <b>Parity:</b> 5 smallest |Δ Rank| across both tables highlighted light blue.<br>
+      <b>Advantage:</b> 5 largest |Δ Rank| across both tables highlighted light orange.
+    </div>
+    """, unsafe_allow_html=True)
+
