@@ -523,7 +523,7 @@ if tab_choice == "🤝 Comparison":
     with csel3:
         neutral = st.checkbox("Neutral site?", value=False)
 
-    # --- SIDE-BY-SIDE TEAM CARDS (mobile-friendly) + SCORE BELOW ---
+    # --- SIDE-BY-SIDE TEAM CARDS (always fit) + SCORE BELOW ---
 
     th = team_frame.set_index('Team').loc[home_team]
     ta = team_frame.set_index('Team').loc[away_team]
@@ -532,41 +532,21 @@ if tab_choice == "🤝 Comparison":
     home_logo = th['Logo'] or ""
     away_logo = ta['Logo'] or ""
     
-    home_html = f"""
-      <div class="team-card">
-        <div class="team-head">
-          <img src="{home_logo}" alt="home logo" class="team-logo"/>
-          <h3 class="team-name">{home_team}</h3>
-        </div>
-        <div class="badges">
-          <span class="badge">Pwr Rank</span><span class="val">{th['Pwr Rank']}</span>
-        </div>
-        <div class="badges">
-          <span class="badge">Off Rank</span><span class="val">{th['Off Rank']}</span>
-        </div>
-        <div class="badges">
-          <span class="badge">Def Rank</span><span class="val">{th['Def Rank']}</span>
-        </div>
-      </div>
-    """
+    def team_html(team, logo, pwr, off, deff):
+        return f"""
+          <div class="team-card">
+            <div class="team-head">
+              <img src="{logo}" alt="logo" class="team-logo"/>
+              <h3 class="team-name">{team}</h3>
+            </div>
+            <div class="badges"><span class="badge">Pwr</span><span class="val">{pwr}</span></div>
+            <div class="badges"><span class="badge">Off</span><span class="val">{off}</span></div>
+            <div class="badges"><span class="badge">Def</span><span class="val">{deff}</span></div>
+          </div>
+        """
     
-    away_html = f"""
-      <div class="team-card">
-        <div class="team-head">
-          <img src="{away_logo}" alt="away logo" class="team-logo"/>
-          <h3 class="team-name">{away_team}</h3>
-        </div>
-        <div class="badges">
-          <span class="badge">Pwr Rank</span><span class="val">{ta['Pwr Rank']}</span>
-        </div>
-        <div class="badges">
-          <span class="badge">Off Rank</span><span class="val">{ta['Off Rank']}</span>
-        </div>
-        <div class="badges">
-          <span class="badge">Def Rank</span><span class="val">{ta['Def Rank']}</span>
-        </div>
-      </div>
-    """
+    home_html = team_html(home_team, home_logo, th['Pwr Rank'], th['Off Rank'], th['Def Rank'])
+    away_html = team_html(away_team, away_logo, ta['Pwr Rank'], ta['Off Rank'], ta['Def Rank'])
     
     st.markdown(
         f"""
@@ -584,50 +564,56 @@ if tab_choice == "🤝 Comparison":
         <style>
           .team-row {{
             display: flex;
-            gap: 12px;
-            overflow-x: auto;       /* keeps side-by-side on small phones via horizontal scroll */
-            padding: 4px 2px 8px 2px;
-            -webkit-overflow-scrolling: touch;
+            flex-wrap: wrap;       /* forces wrapping instead of scroll */
+            justify-content: center;
+            gap: 16px;
+            margin-bottom: 8px;
           }}
           .team-card {{
-            flex: 1 0 320px;        /* min width; stays side-by-side; smaller screens can scroll */
+            flex: 1 1 160px;        /* shrink but stay readable */
+            max-width: 260px;
             background: #f8f9fb;
-            border-radius: 16px;
+            border-radius: 14px;
             padding: 12px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-          }}
-          @media (min-width: 760px) {{
-            .team-card {{ flex-basis: 48%; }}
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
           }}
           .team-head {{
-            display: flex; gap: 10px; align-items: center; margin-bottom: 6px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 8px;
           }}
           .team-logo {{
-            width: 64px; height: 64px; object-fit: contain;
+            width: 64px; height: 64px; object-fit: contain; margin-bottom: 4px;
           }}
           .team-name {{
-            margin: 0; font-size: 18px; line-height: 1.1;
+            margin: 0; font-size: 16px; text-align:center;
           }}
           .badges {{
-            display: flex; align-items: center; gap: 8px; margin: 2px 0;
+            display: flex; justify-content: center; gap: 6px; margin: 2px 0;
           }}
           .badge {{
-            background:#002060; color:#fff; border-radius:8px; padding:2px 6px; font-size:10px; white-space:nowrap;
+            background:#002060; color:#fff; border-radius:6px; padding:2px 5px; font-size:10px;
           }}
           .val {{
             font-weight: 600; font-size: 13px;
           }}
           .score-block {{
-            text-align:center; margin: 6px 0 10px 0;
+            text-align:center; margin: 10px 0;
           }}
           .score-label {{
             font-size:12px; color:#444;
           }}
           .score-main {{
-            font-size: 34px; font-weight: 700;
+            font-size: 30px; font-weight: 700;
           }}
           .score-sub {{
             font-size: 11px; color: #666;
+          }}
+          @media (max-width: 480px) {{
+            .team-logo {{ width: 50px; height: 50px; }}
+            .team-name {{ font-size: 14px; }}
+            .score-main {{ font-size: 24px; }}
           }}
         </style>
         """,
@@ -635,8 +621,6 @@ if tab_choice == "🤝 Comparison":
     )
     
     st.markdown("---")
-
-
 
     # Two match-up tables
     home_ball_df, away_ball_df = build_rank_tables(team_frame, home_team, away_team)
