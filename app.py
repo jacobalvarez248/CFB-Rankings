@@ -243,24 +243,34 @@ def build_rank_tables(team_df, home, away):
     Returns:
       when_home_has_ball: home OFF vs away DEF
       when_away_has_ball: away OFF vs home DEF
+    NaN-safe: coerces metric columns to numeric, keeps NaNs in ranks,
+    skips rows where a rank is missing.
     """
     import pandas as pd
+    import numpy as np
 
     tdf = team_df.set_index('Team', drop=False)
     nteams = len(tdf)
 
-    # Combine: original + extra, so extras appear at the bottom
-    all_metrics = COMPARISON_METRICS + EXTRA_COMPARISON_METRICS
+    # Combine base + any extra metrics you defined elsewhere
+    all_metrics = COMPARISON_METRICS + (EXTRA_COMPARISON_METRICS if 'EXTRA_COMPARISON_METRICS' in globals() else [])
+
+    # Pre-coerce all metric columns to numeric once (errors -> NaN)
+    needed_cols = set()
+    for _, off_col, def_col in all_metrics:
+        if off_col in tdf.columns: needed_cols.add(off_col)
+        if def_col in tdf.columns: needed_cols.add(def_col)
+    for c in needed_cols:
+        tdf[c] = pd.to_numeric(tdf[c], errors='coerce')
 
     def rank_series(col, higher_is_better):
-        s = tdf[col]
-        return s.rank(ascending=not higher_is_better, method='min').astype(int)
+        # keep NaNs; nullable Int64 so formatting doesn’t crash
+        r = tdf[col].rank(ascending=not higher_is_better, method='min', na_option='keep')
+        return r.astype('Int64')
 
-    # Precompute ranks respecting the rule:
-    #   offense: higher number = better (ascending=False)
-    #   defense: lower  number = better (ascending=True)
+    # Precompute ranks (offense high→good, defense low→good)
     ranks = {}
-    for label, off_col, def_col in all_metrics:
+    for _, off_col, def_col in all_metrics:
         if off_col in tdf.columns:
             ranks[off_col] = rank_series(off_col, higher_is_better=True)
         if def_col in tdf.columns:
@@ -271,10 +281,13 @@ def build_rank_tables(team_df, home, away):
         for label, off_col, def_col in all_metrics:
             if off_col not in ranks or def_col not in ranks:
                 continue
-            if off_team not in ranks[off_col].index or def_team not in ranks[def_col].index:
+            off_val = ranks[off_col].get(off_team, pd.NA)
+            def_val = ranks[def_col].get(def_team, pd.NA)
+            # Skip if either rank is missing
+            if pd.isna(off_val) or pd.isna(def_val):
                 continue
-            off_rank = int(ranks[off_col].loc[off_team])
-            def_rank = int(ranks[def_col].loc[def_team])
+            off_rank = int(off_val)
+            def_rank = int(def_val)
             diff = abs(off_rank - def_rank)
             rows.append((label, off_rank, def_rank, diff))
         out = pd.DataFrame(rows, columns=['Metric', 'Off Rank', 'Def Rank', 'Δ Rank'])
@@ -282,6 +295,7 @@ def build_rank_tables(team_df, home, away):
         return out
 
     return one_side(home, away), one_side(away, home)
+
 
 def projected_score(team_df, home, away, neutral: bool):
     """
