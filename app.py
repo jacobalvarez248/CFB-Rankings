@@ -680,13 +680,16 @@ if tab_choice == "🤝 Comparison":
     # Small legend
     st.markdown("""
     <div style="font-size:11px;color:#555;margin-top:.5rem">
-      <b>Color scale:</b> rank #1 darkest blue across all teams; higher rank numbers lighter.<br>
-      <b>Parity:</b> 5 smallest |Δ Rank| across both tables highlighted light blue.<br>
-      <b>Advantage:</b> 5 largest |Δ Rank| across both tables highlighted light orange.
-      <b>Expected Points (EP)</b> Each yardline is assigned a point value and measures the number of points that would be expected to be scored based on down, distance, and field position
-      <b>Expected Points Added (EPA)</b> Takes the EP from before a play and subtracts it from the EP after the play
-      <b>Explosiveness</b> Measures the average EPA on plays which were marked as successful
-      <b>Success Rate</b> Determines the success of a play. Successful plays meet one of the following criteria: 1st downs which gain at least 50% of the yards to go. 2nd downs which gain at least 70% of the yards go. 3rd and 4th downs which gain at least 100% of the yards to go
+      <b>Color scale:</b> rank #1 darkest blue across all teams; higher rank numbers lighter<br>
+      <b>Parity:</b> 5 smallest |Δ Rank| across both tables highlighted light blue<br>
+      <b>Advantage:</b> 5 largest |Δ Rank| across both tables highlighted light orange<br>
+      <b>Expected Points (EP)</b> Each yardline is assigned a point value and measures the number of points that would be expected to be scored based on down, distance, and field position<br>
+      <b>Expected Points Added (EPA)</b> Takes the EP from before a play and subtracts it from the EP after the play<br>
+      <b>Explosiveness</b> Measures the average EPA on plays which were marked as successful<br>
+      <b>Success Rate</b> Determines the success of a play. Successful plays meet one of the following criteria: <br>
+      1st downs which gain at least 50% of the yards to go <br>
+      2nd downs which gain at least 70% of the yards go <br>
+      3rd and 4th downs which gain at least 100% of the yards to go
       
     </div>
     """, unsafe_allow_html=True)
