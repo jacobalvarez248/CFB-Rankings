@@ -562,18 +562,17 @@ if tab_choice == "🤝 Comparison":
         </div>
     
         <style>
-          .team-row {
+          .team-row {{
             display: flex;
             flex-wrap: wrap;
             justify-content: center;
             gap: 16px;
             margin-bottom: 8px;
-          }
-        
-          /* Card becomes a 4-row grid:
-             [fixed header height] + [3 fixed metric rows]
-             This guarantees Pwr/Off/Def line up across cards. */
-          .team-card {
+          }}
+    
+          /* Card as a 4-row grid:
+             [fixed header] + [3 fixed metric rows] so Pwr/Off/Def align */
+          .team-card {{
             display: grid;
             grid-template-rows: 112px 28px 28px 28px;  /* header + 3 metric rows */
             flex: 1 1 160px;
@@ -582,68 +581,68 @@ if tab_choice == "🤝 Comparison":
             border-radius: 14px;
             padding: 12px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-          }
-        
-          /* Header has fixed height and centers its contents */
-          .team-head {
+          }}
+    
+          /* Fixed-height header centers contents */
+          .team-head {{
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;   /* centers logo + name within the fixed header row */
+            justify-content: center;
             height: 100%;
-          }
-        
-          .team-logo {
+          }}
+    
+          .team-logo {{
             width: 64px; height: 64px; object-fit: contain; margin-bottom: 4px;
-          }
-        
-          /* Clamp team names to 2 lines so long names don't push rows down */
-          .team-name {
+          }}
+    
+          /* Clamp long names to 2 lines */
+          .team-name {{
             margin: 0; font-size: 16px; text-align: center; line-height: 1.15;
             display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
             max-width: 200px;
-          }
-        
-          /* Metric rows – consistent height + centered content */
-          .badges {
+          }}
+    
+          /* Metric rows with consistent structure */
+          .badges {{
             display: grid;
             grid-template-columns: 42px 1fr; /* same columns on both cards */
             align-items: center;
             justify-content: center;
             column-gap: 8px;
-            margin: 0;                       /* exact row height is controlled by grid */
-          }
-        
-          .badge {
+            margin: 0;
+          }}
+    
+          .badge {{
             background:#002060; color:#fff; border-radius:6px; padding:2px 5px; font-size:10px;
             text-align: center;
-          }
-        
-          .val {
+          }}
+    
+          .val {{
             font-weight: 600; font-size: 13px; text-align: left;
-          }
-        
-          .score-block {
+          }}
+    
+          .score-block {{
             text-align:center; margin: 10px 0;
-          }
-          .score-label { font-size:12px; color:#444; }
-          .score-main  { font-size: 30px; font-weight: 700; }
-          .score-sub   { font-size: 11px; color: #666; }
-        
+          }}
+          .score-label {{ font-size:12px; color:#444; }}
+          .score-main  {{ font-size: 30px; font-weight: 700; }}
+          .score-sub   {{ font-size: 11px; color: #666; }}
+    
           /* Slightly smaller on very small phones */
-          @media (max-width: 480px) {
-            .team-card { grid-template-rows: 100px 26px 26px 26px; }
-            .team-logo { width: 50px; height: 50px; }
-            .team-name { font-size: 14px; }
-            .score-main { font-size: 24px; }
-          }
+          @media (max-width: 480px) {{
+            .team-card {{ grid-template-rows: 100px 26px 26px 26px; }}
+            .team-logo {{ width: 50px; height: 50px; }}
+            .team-name {{ font-size: 14px; }}
+            .score-main {{ font-size: 24px; }}
+          }}
         </style>
-
         """,
         unsafe_allow_html=True
     )
     
     st.markdown("---")
+
 
     # Two match-up tables
     home_ball_df, away_ball_df = build_rank_tables(team_frame, home_team, away_team)
