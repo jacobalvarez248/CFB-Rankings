@@ -12,12 +12,11 @@ def load_data():
     expected_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Expected Wins', header=1)
     logos_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Logos', header=1)
     metrics_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Metrics', header=0)
-    
-    # Fix column naming issue
+    advanced_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Advanced Stats Data', header=0)  # 👈 NEW
     metrics_df.reset_index(inplace=True)
-    return expected_df, logos_df, metrics_df
+    return expected_df, logos_df, metrics_df, advanced_df
 
-df, logos_df, metrics_df = load_data()
+df, logos_df, metrics_df, advanced_df = load_data()
 
 def deduplicate_columns(columns):
     seen = {}
@@ -74,11 +73,17 @@ if 'selected_team' not in st.session_state:
     st.session_state['selected_team'] = preselect_team if preselect_team else df.index[0]
 
 # --- Build a clean team-level frame from Metrics for ranks + ratings
-def build_team_frame(df_expected, df_metrics, df_logos):
-    # keep only what we need + attach logos
+def build_team_frame(df_expected, df_metrics, df_logos, df_advanced=None):
     base = df_metrics.copy()
-    # Ratings expected to exist in Metrics sheet
-    # 'Team', 'Power Rating', 'Offensive Rating', 'Defensive Rating', plus per-metric cols (Off./Def. …)
+    # normalize col names a bit
+    base.columns = base.columns.map(lambda c: c.strip())
+
+    if df_advanced is not None:
+        adv = df_advanced.copy()
+        adv.columns = adv.columns.map(lambda c: c.strip())
+        if 'Team' in adv.columns:
+            base = base.merge(adv, on='Team', how='left')
+
     needed = ['Team', 'Power Rating', 'Offensive Rating', 'Defensive Rating']
     missing = [c for c in needed if c not in base.columns]
     if missing:
@@ -93,6 +98,7 @@ def build_team_frame(df_expected, df_metrics, df_logos):
     base['Def Rank'] = base['Defensive Rating'].rank(ascending=True,  method='min').astype(int)  # lower is better on defense
 
     return base
+
 
 # --- Metric map: Offense column vs matching Defense column on the Metrics sheet
 COMPARISON_METRICS = [
@@ -119,6 +125,13 @@ COMPARISON_METRICS = [
     ("Explosiveness",        "Off. Explosiveness",      "Def. Explosiveness"),
     ("Pass Explosiveness",   "Off. Pass Explosivenes",  "Def. Pass Explosivenes"),
     ("Rush Explosiveness",   "Off. Rush Explosiveness", "Def. Rush Explosiveness"),
+]
+# --- Extra metrics from "Advanced Stats Data" (appended at the bottom)
+EXTRA_COMPARISON_METRICS = [
+    ("Stuff Rate",                 "Offense StuffRate",                    "Defense StuffRate"),
+    ("Pts./Opportunity",           "Offense PointsPerOpportunity",         "Defense PointsPerOpportunity"),
+    ("Field Position Avg. Start",  "Offense FieldPosition AverageStart",   "Defense FieldPosition AverageStart"),
+    ("Havoc",                      "Offense Havoc Total",                  "Defense Havoc Total"),
 ]
 
 def build_rank_tables(team_df, home, away):
@@ -533,7 +546,7 @@ if tab_choice == "🤝 Comparison":
     st.markdown("## 🤝 Comparison")
 
     # Build unified frame once
-    team_frame = build_team_frame(df, metrics_df, logos_df)
+    team_frame = build_team_frame(df, metrics_df, logos_df, advanced_df) 
 
     all_teams = sorted(team_frame['Team'].tolist())
 
