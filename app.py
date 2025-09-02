@@ -523,41 +523,119 @@ if tab_choice == "🤝 Comparison":
     with csel3:
         neutral = st.checkbox("Neutral site?", value=False)
 
-    # Header with logos + overall/off/def ranks (side-by-side teams, score below)
+    # --- SIDE-BY-SIDE TEAM CARDS (mobile-friendly) + SCORE BELOW ---
+
     th = team_frame.set_index('Team').loc[home_team]
     ta = team_frame.set_index('Team').loc[away_team]
-    
-    col_home, col_away = st.columns([1, 1])
-    
-    def badge(label, value, target):
-        target.markdown(f"""
-        <div style="display:flex;gap:.5rem;align-items:center;margin:2px 0;">
-            <div style="background:#002060;color:#fff;border-radius:8px;padding:2px 6px;font-size:10px">{label}</div>
-            <div style="font-weight:600">{value}</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col_home:
-        st.image(th['Logo'], width=90)
-        st.markdown(f"### {home_team}")
-        badge("Pwr Rank", th['Pwr Rank'], st)
-        badge("Off Rank", th['Off Rank'], st)
-        badge("Def Rank", th['Def Rank'], st)
-    
-    with col_away:
-        st.image(ta['Logo'], width=90)
-        st.markdown(f"### {away_team}")
-        badge("Pwr Rank", ta['Pwr Rank'], st)
-        badge("Off Rank", ta['Off Rank'], st)
-        badge("Def Rank", ta['Def Rank'], st)
-    
-    # Projected score centered below both
     total, home_score, away_score = projected_score(team_frame, home_team, away_team, neutral)
-    st.markdown("<div style='text-align:center;font-size:12px;color:#444;margin-top:.5rem'>Projected Score</div>", unsafe_allow_html=True)
-    st.markdown(f"<div style='text-align:center;font-size:34px;font-weight:700'>{home_score:.2f} — {away_score:.2f}</div>", unsafe_allow_html=True)
-    st.markdown(f"<div style='text-align:center;font-size:11px;color:#666'>TOTAL {total:.2f}</div>", unsafe_allow_html=True)
+    
+    home_logo = th['Logo'] or ""
+    away_logo = ta['Logo'] or ""
+    
+    home_html = f"""
+      <div class="team-card">
+        <div class="team-head">
+          <img src="{home_logo}" alt="home logo" class="team-logo"/>
+          <h3 class="team-name">{home_team}</h3>
+        </div>
+        <div class="badges">
+          <span class="badge">Pwr Rank</span><span class="val">{th['Pwr Rank']}</span>
+        </div>
+        <div class="badges">
+          <span class="badge">Off Rank</span><span class="val">{th['Off Rank']}</span>
+        </div>
+        <div class="badges">
+          <span class="badge">Def Rank</span><span class="val">{th['Def Rank']}</span>
+        </div>
+      </div>
+    """
+    
+    away_html = f"""
+      <div class="team-card">
+        <div class="team-head">
+          <img src="{away_logo}" alt="away logo" class="team-logo"/>
+          <h3 class="team-name">{away_team}</h3>
+        </div>
+        <div class="badges">
+          <span class="badge">Pwr Rank</span><span class="val">{ta['Pwr Rank']}</span>
+        </div>
+        <div class="badges">
+          <span class="badge">Off Rank</span><span class="val">{ta['Off Rank']}</span>
+        </div>
+        <div class="badges">
+          <span class="badge">Def Rank</span><span class="val">{ta['Def Rank']}</span>
+        </div>
+      </div>
+    """
+    
+    st.markdown(
+        f"""
+        <div class="team-row">
+          {home_html}
+          {away_html}
+        </div>
+    
+        <div class="score-block">
+          <div class="score-label">Projected Score</div>
+          <div class="score-main">{home_score:.2f} — {away_score:.2f}</div>
+          <div class="score-sub">TOTAL {total:.2f}</div>
+        </div>
+    
+        <style>
+          .team-row {{
+            display: flex;
+            gap: 12px;
+            overflow-x: auto;       /* keeps side-by-side on small phones via horizontal scroll */
+            padding: 4px 2px 8px 2px;
+            -webkit-overflow-scrolling: touch;
+          }}
+          .team-card {{
+            flex: 1 0 320px;        /* min width; stays side-by-side; smaller screens can scroll */
+            background: #f8f9fb;
+            border-radius: 16px;
+            padding: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+          }}
+          @media (min-width: 760px) {{
+            .team-card {{ flex-basis: 48%; }}
+          }}
+          .team-head {{
+            display: flex; gap: 10px; align-items: center; margin-bottom: 6px;
+          }}
+          .team-logo {{
+            width: 64px; height: 64px; object-fit: contain;
+          }}
+          .team-name {{
+            margin: 0; font-size: 18px; line-height: 1.1;
+          }}
+          .badges {{
+            display: flex; align-items: center; gap: 8px; margin: 2px 0;
+          }}
+          .badge {{
+            background:#002060; color:#fff; border-radius:8px; padding:2px 6px; font-size:10px; white-space:nowrap;
+          }}
+          .val {{
+            font-weight: 600; font-size: 13px;
+          }}
+          .score-block {{
+            text-align:center; margin: 6px 0 10px 0;
+          }}
+          .score-label {{
+            font-size:12px; color:#444;
+          }}
+          .score-main {{
+            font-size: 34px; font-weight: 700;
+          }}
+          .score-sub {{
+            font-size: 11px; color: #666;
+          }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
     
     st.markdown("---")
+
 
 
     # Two match-up tables
