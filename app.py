@@ -690,7 +690,7 @@ if tab_choice == "🤝 Comparison":
       1st downs which gain at least 50% of the yards to go <br>
       2nd downs which gain at least 70% of the yards go <br>
       3rd and 4th downs which gain at least 100% of the yards to go<br>
-      <b>Scorring Opportunity:</b> All offenisvie drives that cross the opponent's 40-yard line
+      <b>Scoring Opportunity:</b> All offenisvie drives that cross the opponent's 40-yard line
       
     </div>
     """, unsafe_allow_html=True)
