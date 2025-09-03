@@ -474,17 +474,18 @@ if tab_choice == "📈 Metrics":
         rk_txt = rk.map(lambda x: "" if (rk is None or pd.isna(x)) else f" ({int(x)})") if rk is not None else ""
         return (val_txt.fillna("") + (rk_txt if isinstance(rk_txt, pd.Series) else "")).str.strip()
 
-    # --- Format metric columns as "value (rank)" with NO decimals ---
+    # --- Format metric columns as "value (rank)" with 1 decimal (rates too) ---
     def _fmt_metric(col_name):
         s = filt_df[col_name].reindex(view.index)
         rk = filt_df.get(f"{col_name}__rk", None)
         rk = rk.reindex(view.index) if rk is not None else None
     
+        # 1 decimal for rates and numbers (except ratings handled later)
         is_rate = ("Success Rate" in col_name) and ("Explosiveness" not in col_name)
         if is_rate:
-            val_txt = s.map(lambda x: "" if pd.isna(x) else f"{x:.0%}")  # ← no decimals for % (e.g., 54%)
+            val_txt = s.map(lambda x: "" if pd.isna(x) else f"{x:.1%}")
         else:
-            val_txt = s.map(lambda x: "" if pd.isna(x) else f"{x:.0f}")  # ← no decimals for numbers
+            val_txt = s.map(lambda x: "" if pd.isna(x) else f"{x:.1f}")
     
         rk_txt = rk.map(lambda x: "" if (rk is None or pd.isna(x)) else f" ({int(x)})") if rk is not None else ""
         return (val_txt.fillna("") + (rk_txt if isinstance(rk_txt, pd.Series) else "")).str.strip()
@@ -494,21 +495,41 @@ if tab_choice == "📈 Metrics":
         if col in display_view.columns:
             display_view[col] = _fmt_metric(col)
     
-    # Drop helper rank columns from the display
+    # Drop helper rank cols from the display table
     display_view = display_view[[c for c in display_view.columns if not c.endswith("__rk")]]
     
-    # Rename headers last
+    # --- Header rename for display ---
     display_view.rename(columns=rename_dict, inplace=True)
     
-    # --- No-decimal formatting for rating columns too ---
-    for disp_col in ("Pwr", "Off", "Def"):
-        if disp_col in display_view.columns:
-            # ensure they render with no decimals
-            display_view[disp_col] = display_view[disp_col].map(lambda x: "" if pd.isna(x) else f"{float(x):.0f}")
+    # --- Ratings: show TWO decimals for Pwr/Off/Def ---
+    for raw_col, disp_col in [("Pwr Rtg", "Pwr"), ("Off Rtg", "Off"), ("Def Rtg", "Def")]:
+        if disp_col in display_view.columns and raw_col in filt_df.columns:
+            display_view[disp_col] = filt_df[raw_col].reindex(view.index).map(
+                lambda x: "" if pd.isna(x) else f"{float(x):.2f}"
+            )
     
-    # --- Column-wise color gradients (same map used elsewhere in the app) ---
-    # If you already store your cmap in session_state, we’ll reuse it; otherwise default to 'RdYlGn'.
-    APP_CMAP = st.session_state.get("app_cmap", "RdYlGn")
+    # === Color gradients: "best" is darkest blue, with white text ===
+    from matplotlib import cm
+    
+    BLUE_CMAP = "Blues"  # consistent across app; change once if you use a named constant
+    
+    def _goodness_series(raw, higher_is_better: bool):
+        """Return a Series where higher = better (invert if needed)."""
+        vals = raw.astype(float)
+        if not higher_is_better:
+            # invert so 'better' becomes larger
+            vals = vals.max() - vals
+        return vals
+    
+    def _text_contrast_from_series(raw, higher_is_better: bool):
+        """Styler.apply helper: white text on strong blue cells (top ~40%)."""
+        vals = raw.astype(float)
+        if not higher_is_better:
+            vals = vals.max() - vals
+        rng = vals.max() - vals.min()
+        norm = (vals - vals.min()) / (rng if rng != 0 else 1.0)
+        # white text on darker blues
+        return ['color: white' if v >= 0.6 else 'color: black' for v in norm]
     
     styled = (
         display_view.style
@@ -519,28 +540,40 @@ if tab_choice == "📈 Metrics":
             ])
     )
     
-    # Apply background gradients using underlying NUMERIC series for each column
-    # Metrics family columns
+    # Ratings gradients (Pwr/Off higher=better; Def lower=better)
+    for raw_col, disp_col, higher_is_better in [
+        ("Pwr Rtg", "Pwr", True),
+        ("Off Rtg", "Off", True),
+        ("Def Rtg", "Def", False),
+    ]:
+        if disp_col in display_view.columns and raw_col in filt_df.columns:
+            gmap_vals = _goodness_series(filt_df[raw_col].reindex(view.index), higher_is_better)
+            styled = styled.background_gradient(cmap=BLUE_CMAP, subset=[disp_col], gmap=gmap_vals)
+            styled = styled.apply(lambda s, rc=raw_col, hib=higher_is_better:
+                                  _text_contrast_from_series(filt_df[rc].reindex(s.index), hib),
+                                  subset=[disp_col])
+    
+    # Metric family columns: Offense higher=better, Defense lower=better
     for raw_col in family_cols:
         disp_col = rename_dict.get(raw_col, raw_col)
-        if disp_col in display_view.columns:
-            # gmap uses the numeric values to color the already-formatted strings
-            gmap_series = filt_df[raw_col].reindex(view.index)
-            styled = styled.background_gradient(cmap=APP_CMAP, subset=[disp_col], gmap=gmap_series)
+        if disp_col not in display_view.columns:
+            continue
+        is_def_metric = raw_col.startswith("Def.")
+        higher_is_better = not is_def_metric
     
-    # Ratings (Pwr/Off/Def) columns
-    ratings_map = {"Pwr Rtg": "Pwr", "Off Rtg": "Off", "Def Rtg": "Def"}
-    for raw_col, disp_col in ratings_map.items():
-        if disp_col in display_view.columns and raw_col in filt_df.columns:
-            gmap_series = filt_df[raw_col].reindex(view.index)
-            styled = styled.background_gradient(cmap=APP_CMAP, subset=[disp_col], gmap=gmap_series)
+        gmap_vals = _goodness_series(filt_df[raw_col].reindex(view.index), higher_is_better)
+        styled = styled.background_gradient(cmap=BLUE_CMAP, subset=[disp_col], gmap=gmap_vals)
+        styled = styled.apply(lambda s, rc=raw_col, hib=higher_is_better:
+                              _text_contrast_from_series(filt_df[rc].reindex(s.index), hib),
+                              subset=[disp_col])
     
-    # Render
+    # Render table
     st.write(styled.to_html(), unsafe_allow_html=True)
     
-    # Hint text for the sort checkbox behavior
+    # Hint text for the sort checkbox behavior (unchanged)
     hint = "Ascending = best rank first (1 → …)" if is_rank_sort else "Ascending = low → high"
     st.caption(hint)
+
 
 #---------------------------------------------------------Team Dashboards--------------------------------------------------------
 if tab_choice == "📊 Team Dashboards":
