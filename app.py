@@ -186,21 +186,36 @@ def projected_score(team_df, home, away, neutral: bool):
     tdf = team_df.set_index('Team', drop=False)
     h = tdf.loc[home]
     a = tdf.loc[away]
-def get_team_long_name(schedule_df):
+def get_team_long_name(schedule_path="CFB Rankings Upload.xlsm"):
     """
-    Map Team -> long display name using Schedule!AP:AQ (headers: Team, Name).
-    Falls back to simple Team if not found.
+    Return a dict {Team: Long Name}.
+    First tries to read Schedule!AP:AQ directly.
+    Falls back to scanning the full schedule_df if needed.
     """
-    # If the sheet already exposes columns named exactly 'Team' & 'Name' anywhere:
-    cols = schedule_df.columns.str.strip().str.lower()
-    if 'team' in cols and 'name' in cols:
-        team_col = schedule_df.columns[cols.get_loc('team')]
-        name_col = schedule_df.columns[cols.get_loc('name')]
-        m = (schedule_df[[team_col, name_col]]
-             .dropna()
-             .drop_duplicates(subset=[team_col]))
-        return dict(zip(m[team_col].astype(str), m[name_col].astype(str)))
-    return {}
+    try:
+        # Read the two-column lookup explicitly
+        team_long_df = pd.read_excel(
+            schedule_path,
+            sheet_name="Schedule",
+            usecols="AP:AQ",   # adjust if your lookup block moves
+            header=0
+        )
+        team_long_df = team_long_df.dropna(subset=["Team", "Name"])
+        return dict(zip(team_long_df["Team"].astype(str), team_long_df["Name"].astype(str)))
+    except Exception as e:
+        # Fallback: try inside the schedule_df itself
+        try:
+            schedule_df = pd.read_excel(schedule_path, sheet_name="Schedule", header=0)
+            cols = schedule_df.columns.str.strip().str.lower()
+            if "team" in cols and "name" in cols:
+                team_col = schedule_df.columns[cols.get_loc("team")]
+                name_col = schedule_df.columns[cols.get_loc("name")]
+                m = schedule_df[[team_col, name_col]].dropna().drop_duplicates(subset=[team_col])
+                return dict(zip(m[team_col].astype(str), m[name_col].astype(str)))
+        except:
+            pass
+        # If nothing works, return empty
+        return {}
 
 def schedule_for_team(schedule_df, team):
     """
