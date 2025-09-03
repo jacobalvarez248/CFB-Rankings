@@ -469,7 +469,7 @@ if tab_choice == "📈 Metrics":
     # Headers (blank Team header to avoid odd glyphs)
     rename_dict = {
         "Rk": "Rk",
-        "Team": "",               # logo-only
+        "Team": "Team",               # logo-only
         "Conf Name": "Conf",      # logo-only
         "Pwr Rtg": "Pwr", "Off Rtg": "Off", "Def Rtg": "Def",
         "Off. Yds/Game": "Y/G", "Off. Pass Yds/Game": "P Y/G", "Off. Rush Yds/Game": "R Y/G", "Off. Points/Game": "Pts/G",
