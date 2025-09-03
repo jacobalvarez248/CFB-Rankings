@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from matplotlib.colors import LinearSegmentedColormap
-from urllib.parse import unquote
+from urllib.parse import unquote, quote
 import streamlit.components.v1 as components
 import numpy as np
 
@@ -407,17 +407,23 @@ if tab_choice == "📈 Metrics":
     base_cols = [c for c in ['Rk', 'Team', 'Conf Name', 'Pwr Rtg', 'Off Rtg', 'Def Rtg'] if c in filt_df.columns]
     view = filt_df[base_cols + family_cols + rank_cols].copy()
 
-    # Add team logo inline (HTML)
-    logos_map = logos_df.set_index('Team')['Image URL']
-    team_with_logo = filt_df['Team'].map(
-        lambda t: f'<img src="{logos_map.get(t, "")}" width="20"> {t}'
-        if pd.notna(logos_map.get(t, "")) and logos_map.get(t, "") != "" else t
-    )
+    # --- clickable logo that routes to Team Dashboards (same pattern as Rankings tab) ---
+    logos_map = logos_df.set_index("Team")["Image URL"].to_dict()
     
-    if 'Team' in view.columns:
-        view['Team'] = team_with_logo
+    def team_logo_link(team: str) -> str:
+        url = logos_map.get(team, "")
+        if not url:
+            return ""  # no logo available
+        return (
+            f'<a href="?selected_team={quote(team)}#📊%20Team%20Dashboards">'
+            f'<img src="{url}" width="20" style="vertical-align:middle;border-radius:3px;"></a>'
+        )
+    
+    # Overwrite the Team column with the clickable logo-only cell
+    if "Team" in view.columns:
+        view["Team"] = filt_df["Team"].reindex(view.index).map(team_logo_link)
     else:
-        view.insert(1, 'Team', team_with_logo)
+        view.insert(1, "Team", filt_df["Team"].reindex(view.index).map(team_logo_link))
 
     # Short display names for headers
     rename_dict = {
@@ -446,7 +452,7 @@ if tab_choice == "📈 Metrics":
     display_cols = [rename_dict.get(c, c) for c in base_cols + family_cols]
     with sort_placeholder:
         sort_target_display = st.selectbox("Sort by", options=display_cols, index=display_cols.index("Rk") if "Rk" in display_cols else 0, key="metrics_sort_by")
-        asc_box = st.checkbox("Ascending", value=False, key="metrics_sort_asc")
+        asc_box = st.checkbox("Ascending", value=True, key="metrics_sort_asc")
 
     # Map back to raw column
     base_col = reverse_rename.get(sort_target_display, sort_target_display)
@@ -566,7 +572,21 @@ if tab_choice == "📈 Metrics":
         styled = styled.apply(lambda s, rc=raw_col, hib=higher_is_better:
                               _text_contrast_from_series(filt_df[rc].reindex(s.index), hib),
                               subset=[disp_col])
+    # Make table fixed-layout and prevent horizontal scrolling
+    TABLE_CSS = """
+    <style>
+    .metrics-table-wrapper { overflow-x: hidden; }
+    .metrics-table-wrapper table { table-layout: fixed; width: 100%; }
+    .metrics-table-wrapper th, .metrics-table-wrapper td {
+      white-space: normal; word-break: break-word; padding: 4px 6px;
+    }
+    .metrics-table-wrapper th { text-align: center; }
+    </style>
+    """
     
+    html_table = styled.to_html()
+    st.write(TABLE_CSS + f'<div class="metrics-table-wrapper">{html_table}</div>', unsafe_allow_html=True)
+
     # Render table
     st.write(styled.to_html(), unsafe_allow_html=True)
     
