@@ -364,7 +364,7 @@ if tab_choice == "📈 Metrics":
     df_core = df[[c for c in core_cols if c in df.columns]].copy()
     merged_df = pd.merge(df_core, metrics_df, on='Team', how='inner')
 
-    # Helpers to tolerate header variations
+    # Helpers to tolerate header variations (Explosivenes vs Explosiveness)
     def _col(name: str):
         for cand in (name, name.replace("Explosiveness", "Explosivenes")):
             if cand in merged_df.columns:
@@ -395,40 +395,38 @@ if tab_choice == "📈 Metrics":
     filt_df = merged_df.copy()
 
     # --- Build TEAM logo map (from logos_df) ---
-    team_logo_map = {}
     url_col_candidates = ["Image URL", "Logo URL", "URL", "Logo", "Image"]
+    team_logo_map = {}
     if "Team" in logos_df.columns:
-        url_col = next((c for c in url_col_candidates if c in logos_df.columns), None)
-        if url_col:
+        url_col_team = next((c for c in url_col_candidates if c in logos_df.columns), None)
+        if url_col_team:
             team_logo_map = (
-                logos_df.set_index("Team")[url_col]
+                logos_df.set_index("Team")[url_col_team]
                 .dropna().astype(str).to_dict()
             )
 
-    # --- Build CONFERENCE logo map from the SAME logos_df ---
+    # --- Build CONFERENCE logo map (from same logos_df) ---
     conf_logo_map = {}
-    # 1) If "Conf Name" column exists in logos_df
-    if "Conf Name" in logos_df.columns:
-        url_col = next((c for c in url_col_candidates if c in logos_df.columns), None)
-        if url_col:
-            conf_logo_map = logos_df.set_index("Conf Name")[url_col].dropna().astype(str).to_dict()
-    # 2) Else, try rows marked as conferences by a "Type" column
-    if not conf_logo_map and "Type" in logos_df.columns:
-        url_col = next((c for c in url_col_candidates if c in logos_df.columns), None)
-        if url_col:
-            conf_rows = logos_df[logos_df["Type"].str.contains("conf", case=False, na=False)]
-            key_col = "Name" if "Name" in conf_rows.columns else ("Team" if "Team" in conf_rows.columns else None)
-            if key_col:
-                conf_logo_map = conf_rows.set_index(key_col)[url_col].dropna().astype(str).to_dict()
-    # 3) Else, last resort: treat logos_df["Team"] rows that equal conf names as conf logos
-    if not conf_logo_map and "Team" in logos_df.columns:
-        url_col = next((c for c in url_col_candidates if c in logos_df.columns), None)
-        if url_col:
-            possible = logos_df[logos_df["Team"].isin(filt_df["Conf Name"].unique())]
-            if not possible.empty:
-                conf_logo_map = possible.set_index("Team")[url_col].dropna().astype(str).to_dict()
+    url_col_any = next((c for c in url_col_candidates if c in logos_df.columns), None)
 
-    # --- Numeric ranks (tie-aware). Offense higher=better; Defense lower=better. ---
+    # 1) Direct "Conf Name" column
+    if "Conf Name" in logos_df.columns and url_col_any:
+        conf_logo_map = logos_df.set_index("Conf Name")[url_col_any].dropna().astype(str).to_dict()
+
+    # 2) If missing, try rows marked as conferences in a "Type" column
+    if not conf_logo_map and "Type" in logos_df.columns and url_col_any:
+        conf_rows = logos_df[logos_df["Type"].str.contains("conf", case=False, na=False)]
+        key_col = "Name" if "Name" in conf_rows.columns else ("Team" if "Team" in conf_rows.columns else None)
+        if key_col:
+            conf_logo_map = conf_rows.set_index(key_col)[url_col_any].dropna().astype(str).to_dict()
+
+    # 3) Last resort: treat logos_df["Team"] rows that equal conf names as conf logos
+    if not conf_logo_map and "Team" in logos_df.columns and url_col_any:
+        possible = logos_df[logos_df["Team"].isin(filt_df["Conf Name"].unique())]
+        if not possible.empty:
+            conf_logo_map = possible.set_index("Team")[url_col_any].dropna().astype(str).to_dict()
+
+    # --- Numeric ranks (tie-aware). Offense: higher=better; Defense: lower=better. ---
     rank_cols = []
     for col in family_cols:
         hib = (prefix == "Off.")
@@ -441,8 +439,7 @@ if tab_choice == "📈 Metrics":
     base_cols = [c for c in ['Rk', 'Team', 'Conf Name', 'Pwr Rtg', 'Off Rtg', 'Def Rtg'] if c in filt_df.columns]
     view = filt_df[base_cols + family_cols + rank_cols].copy()
 
-    # --- Team logos only (clickable → Team Dashboards); ASCII-only hash to avoid parser issues ---
-    # Use plain ASCII anchor to avoid emoji in href: "#Team%20Dashboards"
+    # --- Team logos only (click → Team Dashboards) | ASCII anchor to avoid parser issues ---
     def team_logo_link(team: str) -> str:
         url = team_logo_map.get(team, "")
         if not url:
@@ -454,7 +451,7 @@ if tab_choice == "📈 Metrics":
         )
     view["Team"] = filt_df["Team"].reindex(view.index).map(team_logo_link)
 
-    # --- Conference logos only; fallback to text if no logo ---
+    # --- Conference logos only; fallback to text if not found ---
     def conf_logo_cell(conf_name: str) -> str:
         url = conf_logo_map.get(conf_name, "")
         if url:
@@ -464,16 +461,16 @@ if tab_choice == "📈 Metrics":
     if "Conf Name" in view.columns:
         view["Conf Name"] = filt_df["Conf Name"].reindex(view.index).map(conf_logo_cell)
 
-    # --- Default sort: by Rk ascending (no sort dropdown) ---
+    # --- Default sort: by Rk ascending ---
     if "Rk" in view.columns:
         view = view.sort_values("Rk", ascending=True, kind="mergesort")
 
     # --- Display formatting ---
-    # Short display headers (empty string for Team header to avoid odd glyphs)
+    # Headers (blank Team header to avoid odd glyphs)
     rename_dict = {
         "Rk": "Rk",
-        "Team": "Team",               # logo-only column
-        "Conf Name": "Conf",      # logo-only column
+        "Team": "",               # logo-only
+        "Conf Name": "Conf",      # logo-only
         "Pwr Rtg": "Pwr", "Off Rtg": "Off", "Def Rtg": "Def",
         "Off. Yds/Game": "Y/G", "Off. Pass Yds/Game": "P Y/G", "Off. Rush Yds/Game": "R Y/G", "Off. Points/Game": "Pts/G",
         "Off. Yds/Play": "Y/Pl", "Off. Pass Yds/Play": "P Y/Pl", "Off. Rush Yds/Play": "R Y/Pl", "Off. Points/Play": "Pts/Pl",
@@ -489,7 +486,7 @@ if tab_choice == "📈 Metrics":
 
     display_view = view.copy()
 
-    # Metrics: "value (rank)" with 1 decimal (rates 1 decimal %)
+    # Metrics: "value (rank)" with 1 decimal; rates 1 decimal %
     def _fmt_metric(col_name: str) -> pd.Series:
         s = filt_df[col_name].reindex(display_view.index)
         rk = filt_df.get(f"{col_name}__rk", None)
@@ -507,7 +504,7 @@ if tab_choice == "📈 Metrics":
         if col in display_view.columns:
             display_view[col] = _fmt_metric(col)
 
-    # Ratings as TEXT with exactly TWO decimals (do this BEFORE renaming)
+    # Ratings as TEXT with exactly TWO decimals (format BEFORE renaming)
     for raw_col in ("Pwr Rtg", "Off Rtg", "Def Rtg"):
         if raw_col in display_view.columns and raw_col in filt_df.columns:
             series_numeric = pd.to_numeric(filt_df[raw_col].reindex(display_view.index), errors="coerce")
@@ -524,6 +521,7 @@ if tab_choice == "📈 Metrics":
         if not higher_is_better:
             vals = vals.max() - vals
         return vals
+
     def _text_contrast_from_series(raw: pd.Series, higher_is_better: bool):
         vals = pd.to_numeric(raw, errors="coerce")
         if not higher_is_better:
@@ -535,8 +533,8 @@ if tab_choice == "📈 Metrics":
     styled = display_view.style.hide(axis="index")
 
     # Ratings shading: Pwr/Off higher=better; Def lower=better
-    ratings = [("Pwr Rtg", "Pwr", True), ("Off Rtg", "Off", True), ("Def Rtg", "Def", False)]
-    for raw_col, disp_col, hib in ratings:
+    ratings_cfg = [("Pwr Rtg", "Pwr", True), ("Off Rtg", "Off", True), ("Def Rtg", "Def", False)]
+    for raw_col, disp_col, hib in ratings_cfg:
         if disp_col in display_view.columns and raw_col in filt_df.columns:
             gmap_vals = _goodness_series(filt_df[raw_col].reindex(view.index), hib)
             styled = styled.background_gradient(cmap=BLUE_CMAP, subset=[disp_col], gmap=gmap_vals)
@@ -556,31 +554,55 @@ if tab_choice == "📈 Metrics":
                               _text_contrast_from_series(filt_df[rc].reindex(s.index), h),
                               subset=[disp_col])
 
-    # === Mobile-friendly render (ASCII-only; allow mobile horizontal scroll) ===
+    # === Mobile-friendly render (no overlap) ===
+    # Build per-cell classes so CSS controls wrapping responsively
+    cell_classes = pd.DataFrame("", index=display_view.index, columns=display_view.columns)
+
+    rating_cols = [c for c in ["Pwr", "Off", "Def"] if c in display_view.columns]
+    metric_cols = []
+    for raw_col in family_cols:
+        disp = rename_dict.get(raw_col, raw_col)
+        if disp in display_view.columns:
+            metric_cols.append(disp)
+
+    for c in rating_cols:
+        cell_classes[c] = (cell_classes[c] + " num rating nowrap").str.strip()
+    for c in metric_cols:
+        cell_classes[c] = (cell_classes[c] + " num metric nowrap").str.strip()
+
+    styled = styled.set_td_classes(cell_classes)
+
     TABLE_CSS = """
     <style>
     .metrics-table-wrapper { overflow-x: auto; } /* allow horizontal scroll when needed */
-    .metrics-table { table-layout: fixed; width: 100%; border-collapse: collapse; }
-    .metrics-table th, .metrics-table td { padding: 2px 4px; line-height: 1.1; font-size: 10px; }
+    .metrics-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+
+    .metrics-table th, .metrics-table td {
+      padding: 2px 4px; line-height: 1.15; font-size: 12px;
+    }
     .metrics-table th { text-align: center; }
     .metrics-table img { display: inline-block; vertical-align: middle; }
+
+    /* Numeric cells */
+    .metrics-table td.num { text-align: right; }
+
+    /* Small min-widths so numbers don't crash into borders on desktop */
+    .metrics-table td.rating { min-width: 6.5ch; }  /* e.g., 26.40 */
+    .metrics-table td.metric { min-width: 9ch; }    /* e.g., 610.0 (4) */
+
+    /* Keep numbers on one line on desktop */
+    .metrics-table td.nowrap { white-space: nowrap; }
+
+    /* On phones, let columns breathe and wrap */
     @media (max-width: 640px) {
-      .metrics-table th, .metrics-table td { font-size: 10px; padding: 2px 3px; }
+      .metrics-table { table-layout: auto; }
+      .metrics-table th, .metrics-table td { font-size: 11px; padding: 2px 3px; }
+      .metrics-table td.nowrap { white-space: normal; }  /* allow wrapping to prevent overlap */
+      .metrics-table td.rating, .metrics-table td.metric { min-width: 0; }
     }
     </style>
     """
     st.markdown(TABLE_CSS, unsafe_allow_html=True)
-
-    # Keep numeric columns on one line on larger screens (helps readability)
-    nowrap_cols = []
-    for raw_col in ("Pwr Rtg", "Off Rtg", "Def Rtg"):
-        disp = {"Pwr Rtg":"Pwr", "Off Rtg":"Off", "Def Rtg":"Def"}[raw_col]
-        if disp in display_view.columns: nowrap_cols.append(disp)
-    for raw_col in family_cols:
-        disp = rename_dict.get(raw_col, raw_col)
-        if disp in display_view.columns: nowrap_cols.append(disp)
-    if nowrap_cols:
-        styled = styled.set_properties(subset=nowrap_cols, **{"white-space": "nowrap"})
 
     html_table = styled.set_table_attributes('class="metrics-table"').to_html()
     st.markdown(f'<div class="metrics-table-wrapper">{html_table}</div>', unsafe_allow_html=True)
