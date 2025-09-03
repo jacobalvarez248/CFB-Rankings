@@ -10,14 +10,21 @@ st.set_page_config(page_title="CFB Rankings", layout="wide", initial_sidebar_sta
 @st.cache_data
 def load_data():
     expected_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Expected Wins', header=1)
-    logos_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Logos', header=1)
-    metrics_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Metrics', header=0)
-    
-    # Fix column naming issue
-    metrics_df.reset_index(inplace=True)
-    return expected_df, logos_df, metrics_df
+    logos_df    = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Logos',         header=1)
+    metrics_df  = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Metrics',       header=0)
+    # NEW: schedule sheet for mascot + schedule table
+    schedule_df = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Schedule',      header=0)
 
-df, logos_df, metrics_df = load_data()
+    metrics_df.reset_index(inplace=True)  # (keeps your earlier fix)
+    return expected_df, logos_df, metrics_df, schedule_df
+
+df, logos_df, metrics_df, schedule_df = load_data()
+
+# Name/Mascot map strictly from Schedule!AP:AQ (headers: Team, Name)
+name_map = {}
+if {'Team', 'Name'}.issubset(schedule_df.columns):
+    # "exclusively look down these columns"
+    name_map = schedule_df[['Team','Name']].dropna().drop_duplicates('Team').set_index('Team')['Name'].to_dict()
 
 def deduplicate_columns(columns):
     seen = {}
@@ -70,8 +77,30 @@ df = df[[c for c in first_cols if c in df.columns] + existing]
 
 query_params = st.query_params
 preselect_team = unquote(query_params.get("selected_team", ""))
+
+compare_home = unquote(query_params.get("compare_home", "")) or ""
+compare_away = unquote(query_params.get("compare_away", "")) or ""
+compare_neutral = query_params.get("neutral", "0") in ("1", "true", "True")
+
 if 'selected_team' not in st.session_state:
     st.session_state['selected_team'] = preselect_team if preselect_team else df.index[0]
+
+# Decide default tab based on params
+if compare_home and compare_away:
+    default_tab = "🤝 Comparison"
+elif preselect_team:
+    default_tab = "📊 Team Dashboards"
+else:
+    default_tab = "🏆 Rankings"
+
+tab_choice = st.radio(
+    " ",
+    ["🏆 Rankings", "📈 Metrics", "📊 Team Dashboards", "🤝 Comparison"],
+    horizontal=True,
+    label_visibility="collapsed",
+    index=["🏆 Rankings","📈 Metrics","📊 Team Dashboards","🤝 Comparison"].index(default_tab)
+)
+
 
 # --- Build a clean team-level frame from Metrics for ranks + ratings
 def build_team_frame(df_expected, df_metrics, df_logos):
@@ -610,7 +639,9 @@ if tab_choice == "📈 Metrics":
 #---------------------------------------------------------Team Dashboards--------------------------------------------------------
 if tab_choice == "📊 Team Dashboards":
     st.markdown("## 📊 Team Dashboards")
+
     all_teams = df.index.tolist()
+    # honor inbound selected_team
     if st.session_state['selected_team'] in all_teams:
         default_index = all_teams.index(st.session_state['selected_team'])
     else:
@@ -619,31 +650,234 @@ if tab_choice == "📊 Team Dashboards":
     selected_team = st.selectbox("Select a Team", options=all_teams, index=default_index)
     st.session_state['selected_team'] = selected_team
 
-    team_data = df.loc[[selected_team]]
-    st.markdown(f"### Dashboard for {selected_team}")
-    st.dataframe(team_data.T, use_container_width=True)
+    # --- HEADER CARD (logo + name/mascot + ranks + record info) ---
+    # Logo
+    logo_url = ""
+    if "Image URL" in logos_df.columns and "Team" in logos_df.columns:
+        logo_url = logos_df.set_index("Team")["Image URL"].get(selected_team, "")
+
+    # Team & Mascot strictly from Schedule!AP:AQ -> name_map
+    team_display = f"{selected_team} {name_map.get(selected_team,'')}".strip()
+
+    # Ratings + ranks (sourced from Metrics sheet for ranks, df for ratings if present)
+    # Robust columns
+    def _col(cands, src):
+        for c in cands:
+            if c in src.columns:
+                return c
+        return None
+
+    # Pull ratings from metrics_df (preferred for consistency)
+    m_team = metrics_df[metrics_df['Team'] == selected_team]
+    pr_col  = _col(['Power Rating','Pwr Rtg','Pwr'], m_team)
+    off_col = _col(['Offensive Rating','Off Rtg','Off'], m_team)
+    def_col = _col(['Defensive Rating','Def Rtg','Def'], m_team)
+
+    power = float(m_team[pr_col].iloc[0])  if (pr_col  and not m_team.empty) else float(df.loc[selected_team].get('Pwr Rtg', float('nan')))
+    offr  = float(m_team[off_col].iloc[0]) if (off_col and not m_team.empty) else float(df.loc[selected_team].get('Off Rtg', float('nan')))
+    defr  = float(m_team[def_col].iloc[0]) if (def_col and not m_team.empty) else float(df.loc[selected_team].get('Def Rtg', float('nan')))
+
+    # Global ranks across all teams (from metrics_df)
+    # Defense: lower is better
+    pwr_rank = int(metrics_df['Power Rating'].rank(ascending=False, method='min').loc[m_team.index].iloc[0]) if not m_team.empty else None
+    off_rank = int(metrics_df['Offensive Rating'].rank(ascending=False, method='min').loc[m_team.index].iloc[0]) if not m_team.empty else None
+    def_rank = int(metrics_df['Defensive Rating'].rank(ascending=True,  method='min').loc[m_team.index].iloc[0])  if not m_team.empty else None
+
+    # Current record W-L from df (already renamed earlier to W/L)
+    W = df.loc[selected_team].get('W', None)
+    L = df.loc[selected_team].get('L', None)
+
+    # Remaining expected record:
+    # Use schedule rows for this team and sum remaining game win probs.
+    rem_wins = rem_losses = None
+    if 'Team' in schedule_df.columns:
+        sch = schedule_df[schedule_df['Team'] == selected_team].copy()
+        # Prefer a "Win Probability" column; if Proj Diff is "Win"/"Loss", force to 1/0
+        if 'Win Probability' in sch.columns:
+            wp = sch['Win Probability'].astype(str).str.strip()
+            if 'Proj. Diff' in sch.columns:
+                pdiff = sch['Proj. Diff'].astype(str).str.strip()
+                wp = np.where(pdiff.eq('Win'), 1.0, np.where(pdiff.eq('Loss'), 0.0, pd.to_numeric(wp, errors='coerce')))
+            else:
+                wp = pd.to_numeric(wp, errors='coerce')
+            rem_wins  = float(np.nansum(wp))
+            # assume 12-game season; fallback to games in schedule
+            ng = int(sch.shape[0])
+            rem_losses = float(np.clip(ng - np.nansum(wp), 0, ng))
+    rem_txt = f"{rem_wins:.1f}-{rem_losses:.1f}" if rem_wins is not None and rem_losses is not None else "—"
+
+    # Render: logo left, text right (compact)
+    st.markdown(f"""
+    <div style="display:flex; gap:12px; align-items:flex-start; padding:8px 10px; background:#f8f9fb; border-radius:12px;">
+      <div style="width:60px; min-width:60px; height:60px; display:flex; align-items:center; justify-content:center; border:1px solid #ddd; border-radius:8px;">
+        {'<img src="%s" style="width:56px;height:56px;object-fit:contain;">'%logo_url if logo_url else 'Logo'}
+      </div>
+      <div style="line-height:1.25;">
+        <div style="font-weight:700;">{team_display}</div>
+        <div>Rank: {pwr_rank if pwr_rank is not None else '—'} &nbsp; Off Rank: {off_rank if off_rank is not None else '—'} &nbsp; Def Rank: {def_rank if def_rank is not None else '—'}</div>
+        <div>Record: {f"{int(W)}-{int(L)}" if pd.notna(W) and pd.notna(L) else "—"}</div>
+        <div>Expected Remaining: {rem_txt}</div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("### Schedule")
+
+    # --- Schedule table with clickable opponent (when possible) ---
+    sch = schedule_df[schedule_df['Team'] == selected_team].copy() if 'Team' in schedule_df.columns else pd.DataFrame()
+    if sch.empty:
+        st.info("No schedule found for this team.")
+    else:
+        # Normalize columns by the screenshot labels if present
+        rename_map = {
+            'Opponent_Display':'Opponent',
+            'Opponent Rank':'Opponent Rank',
+            'Projected Spread':'Projected Spread',
+            'Win Probability':'Win Probability',
+            'Game':'Game', 'Date':'Date'
+        }
+        # keep expected columns if they exist
+        cols = [c for c in ['Game','Date','Opponent_Display','Opponent','Opponent Rank','Projected Spread','Proj. Diff','Win Probability','Neutral'] if c in sch.columns]
+        sch = sch[cols].copy()
+
+        # Displayed opponent name column
+        if 'Opponent_Display' in sch.columns:
+            opp_text = sch['Opponent_Display'].astype(str)
+        else:
+            opp_text = sch.get('Opponent', pd.Series(index=sch.index, dtype=str)).astype(str)
+
+        # Determine clickability and link
+        def clean_opp_for_compare(txt: str) -> str:
+            # try explicit Opponent column first
+            return txt.strip()
+
+        # Neutral flag (prefer explicit column)
+        neutral_col = sch['Neutral'] if 'Neutral' in sch.columns else pd.Series([False]*len(sch), index=sch.index)
+
+        link_html = []
+        for i, txt in opp_text.items():
+            # canonical opponent for comparison
+            canon = sch['Opponent'].iloc[i] if 'Opponent' in sch.columns and pd.notna(sch.at[i,'Opponent']) else clean_opp_for_compare(txt.replace('vs ','').replace('at ','').strip())
+            can_compare = canon in comparison_teams and selected_team in comparison_teams
+            if can_compare:
+                nflag = 1 if bool(neutral_col.iloc[i]) else 0
+                url = f"?compare_home={quote(selected_team)}&compare_away={quote(canon)}&neutral={nflag}#%F0%9F%A4%9D%20Comparison"
+                link_html.append(f'<a href="{url}">{txt}</a>')
+            else:
+                link_html.append(txt)
+
+        # Recompose display frame with styles
+        display = pd.DataFrame({
+            "Game": sch['Game'] if 'Game' in sch.columns else range(1, len(sch)+1),
+            "Date": sch['Date'] if 'Date' in sch.columns else "",
+            "Opponent": link_html,
+            "Opponent Rank": sch.get('Opponent Rank', ""),
+            "Projected Spread": sch.get('Projected Spread', sch.get('Proj. Diff',"")),
+            "Win Probability": sch.get('Win Probability', "")
+        })
+
+        # Override Win Probability when Proj. Diff is Win/Loss
+        if 'Proj. Diff' in sch.columns and 'Win Probability' in display.columns:
+            def _calc_wp(row):
+                v = str(row.get('Proj. Diff','')).strip()
+                if v == 'Win':  return '100%'
+                if v == 'Loss': return '0%'
+                return row.get('Win Probability', '')
+            display['Win Probability'] = display.apply(_calc_wp, axis=1)
+
+        # Format like your metrics table header
+        TABLE_CSS = """
+        <style>
+          .sched-table { width:100%; border-collapse:collapse; table-layout:fixed; }
+          .sched-table th { background:#002060; color:#fff; font-weight:500; font-size:11px; padding:4px; text-align:center; }
+          .sched-table td { font-size:11px; padding:6px 6px; text-align:center; vertical-align:middle; }
+          .sched-table td:nth-child(3) { text-align:left; }
+          .sched-table a { color:inherit; text-decoration:underline; }
+        </style>
+        """
+        st.markdown(TABLE_CSS, unsafe_allow_html=True)
+        st.markdown(display.to_html(escape=False, index=False, classes='sched-table'), unsafe_allow_html=True)
+
+    st.markdown("### Team Metrics")
+
+    side = st.selectbox("Unit", ["Offensive","Defensive"], index=0, key="team_metrics_unit")
+
+    # Metric list (matches your screenshot)
+    METRIC_LIST = [
+        "Yards/Game","Pass Yards/Game","Rush Yards/Game","Points/Game",
+        "Yards/Play","Pass Yards/Play","Rush Yards/Play","Points/Play",
+        "EPA/Play","Pass EPA/Play","Rush EPA/Play","Pts/Scoring Opp.",
+        "Success Rate","Pass Success Rate","Rush Success Rate",
+        "Explosiveness","Pass Explosiveness","Rush Explosiveness",
+    ]
+
+    # Build two-column table: Value + Rank among all teams
+    prefix = "Off." if side == "Offensive" else "Def."
+    rows = []
+    tmetrics = metrics_df.set_index('Team', drop=False)
+    for label in METRIC_LIST:
+        col = f"{prefix} {label}"
+        # handle header typo "Explosivenes"
+        if col not in tmetrics.columns and "Explosiveness" in col:
+            col = col.replace("Explosiveness","Explosivenes")
+        if col not in tmetrics.columns:  # skip missing
+            continue
+        # value
+        val = tmetrics.at[selected_team, col] if selected_team in tmetrics.index else np.nan
+        # rank (Off: higher better; Def: lower better)
+        hib = (prefix == "Off.")
+        rank = tmetrics[col].rank(ascending=not hib, method='min')
+        rk  = int(rank.loc[selected_team]) if selected_team in rank.index and pd.notna(rank.loc[selected_team]) else np.nan
+
+        # format value
+        if "Success Rate" in label and "Explosiveness" not in label:
+            vtxt = f"{val:.1%}" if pd.notna(val) else ""
+        else:
+            vtxt = f"{val:.1f}" if pd.notna(val) else ""
+
+        rows.append((label, vtxt, rk))
+
+    mt = pd.DataFrame(rows, columns=["Metric","Value","Rank"]).dropna(subset=["Value"])
+    # Whole numbers for rank
+    mt["Rank"] = mt["Rank"].astype("Int64")
+
+    # Simple blue gradient on Value; Rank as integer
+    styled = (mt.style
+                .hide(axis="index")
+                .format({"Rank":"{:d}"})
+             )
+
+    st.markdown("""
+    <style>
+      .metrics-two-col th { background:#002060; color:#fff; font-weight:500; font-size:11px; padding:4px; text-align:center; }
+      .metrics-two-col td { font-size:11px; padding:6px 6px; vertical-align:middle; }
+      .metrics-two-col td:nth-child(1) { white-space:nowrap; }
+      @media (max-width:640px){ .metrics-two-col td { font-size:11px; } }
+    </style>
+    """, unsafe_allow_html=True)
+    st.markdown(styled.set_table_attributes('class="metrics-two-col"').to_html(), unsafe_allow_html=True)
+
 
 # ----------------------------------------------------- COMPARISON TAB ------------------------------------------------
 if tab_choice == "🤝 Comparison":
     st.markdown("## 🤝 Comparison")
 
-    # Build unified frame once
+    # Build unified frame once (you already have build_team_frame)
     team_frame = build_team_frame(df, metrics_df, logos_df)
-
     all_teams = sorted(team_frame['Team'].tolist())
+
+    # Defaults from query params if set
+    home_default = compare_home if (compare_home in all_teams) else (st.session_state.get('selected_team') if st.session_state.get('selected_team') in all_teams else all_teams[0])
+    away_default = compare_away if (compare_away in all_teams and compare_away != home_default) else (all_teams[0] if all_teams[0] != home_default else all_teams[1] if len(all_teams)>1 else all_teams[0])
 
     csel1, csel2, csel3 = st.columns([2,2,1])
     with csel1:
-        home_team = st.selectbox(
-            "Home Team",
-            all_teams,
-            index=all_teams.index(st.session_state.get('selected_team', all_teams[0]))
-            if st.session_state.get('selected_team') in all_teams else 0
-        )
+        home_team = st.selectbox("Home Team", all_teams, index=all_teams.index(home_default))
     with csel2:
-        away_team = st.selectbox("Away Team", all_teams, index=0 if all_teams[0] != home_team else 1)
+        away_team = st.selectbox("Away Team", all_teams, index=all_teams.index(away_default))
     with csel3:
-        neutral = st.checkbox("Neutral site?", value=False)
+        neutral = st.checkbox("Neutral site?", value=compare_neutral)
+
 
     # --- SIDE-BY-SIDE TEAM CARDS (always fit) + SCORE BELOW ---
     th = team_frame.set_index('Team').loc[home_team]
