@@ -362,7 +362,7 @@ if tab_choice == "📈 Metrics":
     merged_df = pd.merge(df_core, metrics_df, on='Team', how='inner')
 
     # Which metrics to show?
-    def _col(name):
+    def _col(name: str):
         candidates = [name, name.replace("Explosiveness", "Explosivenes")]
         for c in candidates:
             if c in merged_df.columns:
@@ -388,9 +388,10 @@ if tab_choice == "📈 Metrics":
         st.info("No matching metric columns found for your selection.")
         st.stop()
 
+    # Working frame
     filt_df = merged_df.copy()
 
-    # Ranks (higher=better for Off, lower=better for Def)
+    # Ranks: Offense higher=better, Defense lower=better
     rank_cols = []
     for col in family_cols:
         hib = (prefix == "Off.")
@@ -399,10 +400,11 @@ if tab_choice == "📈 Metrics":
         filt_df[rk_col] = rk.astype("Int64")
         rank_cols.append(rk_col)
 
+    # Base view (numeric under the hood)
     base_cols = [c for c in ['Rk', 'Team', 'Conf Name', 'Pwr Rtg', 'Off Rtg', 'Def Rtg'] if c in filt_df.columns]
     view = filt_df[base_cols + family_cols + rank_cols].copy()
 
-    # Logo-only clickable Team column
+    # --- Team logos only (clickable → Team Dashboards) ---
     logos_map = logos_df.set_index("Team")["Image URL"].to_dict()
     def team_logo_link(team: str) -> str:
         url = logos_map.get(team, "")
@@ -410,13 +412,30 @@ if tab_choice == "📈 Metrics":
             return ""
         return (
             f'<a href="?selected_team={quote(team)}#📊%20Team%20Dashboards" title="{team}">'
-            f'<img src="{url}" width="24" style="vertical-align:middle;border-radius:3px;"></a>'
+            f'<img src="{url}" width="22" style="vertical-align:middle;border-radius:3px;"></a>'
         )
     view["Team"] = filt_df["Team"].reindex(view.index).map(team_logo_link)
 
-    # Short headers
+    # --- Conference logos only (fallback blank) ---
+    # Expect conf_logos_df with ["Conf Name","Image URL"] OR a dict CONF_LOGOS = {"SEC": "...png", ...}
+    try:
+        conf_logos_map = conf_logos_df.set_index("Conf Name")["Image URL"].to_dict()
+    except Exception:
+        conf_logos_map = globals().get("CONF_LOGOS", {})
+    def conf_logo_cell(conf_name: str) -> str:
+        url = conf_logos_map.get(conf_name, "")
+        if not url:
+            return ""
+        return f'<img src="{url}" width="20" style="vertical-align:middle;border-radius:3px;" title="{conf_name}">'
+    if "Conf Name" in view.columns:
+        view["Conf Name"] = filt_df["Conf Name"].reindex(view.index).map(conf_logo_cell)
+
+    # Display headers
     rename_dict = {
-        "Rk": "Rk", "Pwr Rtg": "Pwr", "Off Rtg": "Off", "Def Rtg": "Def",
+        "Rk": "Rk",
+        "Team": "",               # logo-only column → blank header looks cleaner
+        "Conf Name": "Conf",      # logo-only conf column
+        "Pwr Rtg": "Pwr", "Off Rtg": "Off", "Def Rtg": "Def",
         "Off. Yds/Game": "Y/G", "Off. Pass Yds/Game": "P Y/G", "Off. Rush Yds/Game": "R Y/G", "Off. Points/Game": "Pts/G",
         "Off. Yds/Play": "Y/Pl", "Off. Pass Yds/Play": "P Y/Pl", "Off. Rush Yds/Play": "R Y/Pl", "Off. Points/Play": "Pts/Pl",
         "Off. EPA/Play": "EPA", "Off. Pass EPA/Play": "P EPA", "Off. Rush EPA/Play": "R EPA", "Off. Points/Scoring Opp.": "Pts/ScOpp",
@@ -445,11 +464,13 @@ if tab_choice == "📈 Metrics":
     sort_col = f"{base_col}__rk" if is_rank_sort else base_col
     if sort_col not in view.columns and base_col in view.columns:
         sort_col = base_col
+    # For ranks, "Ascending" means best-first (1 → …)
     actual_ascending = (True if asc_box else False) if is_rank_sort else asc_box
     view = view.sort_values(sort_col, ascending=actual_ascending, kind="mergesort")
 
     # --- Format for display ---
     def _fmt_metric(col_name: str) -> pd.Series:
+        """'value (rank)' with 1 decimal; rates use 1 decimal %."""
         s = filt_df[col_name].reindex(view.index)
         rk = filt_df.get(f"{col_name}__rk", None)
         rk = rk.reindex(view.index) if rk is not None else None
@@ -467,24 +488,25 @@ if tab_choice == "📈 Metrics":
         if col in display_view.columns:
             display_view[col] = _fmt_metric(col)
 
-    # Ratings with two decimals
+    # Ratings as TEXT with exactly TWO decimals (for display)
     for raw_col, disp_col in [("Pwr Rtg", "Pwr"), ("Off Rtg", "Off"), ("Def Rtg", "Def")]:
-        if raw_col in filt_df.columns and disp_col in display_view.columns:
-            display_view[disp_col] = filt_df[raw_col].reindex(view.index).map(
-                lambda x: "" if pd.isna(x) else f"{float(x):.2f}"
-            )
+        if raw_col in filt_df.columns:
+            series_numeric = pd.to_numeric(filt_df[raw_col].reindex(view.index), errors="coerce")
+            if disp_col in display_view.columns:
+                display_view[disp_col] = series_numeric.map(lambda x: "" if pd.isna(x) else f"{x:.2f}")
 
+    # Drop helper rank cols and rename headers
     display_view = display_view[[c for c in display_view.columns if not c.endswith("__rk")]]
     display_view.rename(columns=rename_dict, inplace=True)
 
     # === Gradients ===
     BLUE_CMAP = "Blues"
-    def _goodness_series(raw, hib):
+    def _goodness_series(raw: pd.Series, hib: bool) -> pd.Series:
         vals = pd.to_numeric(raw, errors="coerce")
         if not hib:
             vals = vals.max() - vals
         return vals
-    def _text_contrast_from_series(raw, hib):
+    def _text_contrast_from_series(raw: pd.Series, hib: bool):
         vals = pd.to_numeric(raw, errors="coerce")
         if not hib:
             vals = vals.max() - vals
@@ -494,7 +516,7 @@ if tab_choice == "📈 Metrics":
 
     styled = display_view.style.hide(axis="index")
 
-    # Ratings shading
+    # Ratings shading: Pwr/Off higher=better; Def lower=better
     for raw_col, disp_col, hib in [("Pwr Rtg", "Pwr", True), ("Off Rtg", "Off", True), ("Def Rtg", "Def", False)]:
         if disp_col in display_view.columns and raw_col in filt_df.columns:
             gmap_vals = _goodness_series(filt_df[raw_col].reindex(view.index), hib)
@@ -502,9 +524,12 @@ if tab_choice == "📈 Metrics":
             styled = styled.apply(lambda s, rc=raw_col, h=hib:
                                   _text_contrast_from_series(filt_df[rc].reindex(s.index), h),
                                   subset=[disp_col])
-    # Metric shading
+
+    # Metric shading: offense metrics higher=better; defense metrics lower=better
     for raw_col in family_cols:
         disp_col = rename_dict.get(raw_col, raw_col)
+        if disp_col not in display_view.columns:
+            continue
         hib = not raw_col.startswith("Def.")
         gmap_vals = _goodness_series(filt_df[raw_col].reindex(view.index), hib)
         styled = styled.background_gradient(cmap=BLUE_CMAP, subset=[disp_col], gmap=gmap_vals)
@@ -512,19 +537,31 @@ if tab_choice == "📈 Metrics":
                               _text_contrast_from_series(filt_df[rc].reindex(s.index), h),
                               subset=[disp_col])
 
-    # === Render (no side scroll) ===
+    # === Mobile-friendly render (no side scroll; tighter text; nowrap numbers) ===
     TABLE_CSS = """
     <style>
     .metrics-table-wrapper { overflow-x: hidden; }
     .metrics-table { table-layout: fixed; width: 100%; border-collapse: collapse; }
-    .metrics-table th, .metrics-table td {
-      white-space: normal; word-break: break-word; padding: 4px 6px;
-    }
+    .metrics-table th, .metrics-table td { padding: 2px 4px; line-height: 1.1; font-size: 12px; }
     .metrics-table th { text-align: center; }
     .metrics-table img { display: inline-block; vertical-align: middle; }
+    @media (max-width: 480px) {
+      .metrics-table th, .metrics-table td { font-size: 11px; padding: 2px 3px; }
+    }
     </style>
     """
     st.markdown(TABLE_CSS, unsafe_allow_html=True)
+
+    # Keep numeric columns on one line (reduce wrapping)
+    nowrap_display_cols = []
+    for disp_col in ("Pwr", "Off", "Def"):
+        if disp_col in display_view.columns: nowrap_display_cols.append(disp_col)
+    for raw_col in family_cols:
+        disp_col = rename_dict.get(raw_col, raw_col)
+        if disp_col in display_view.columns: nowrap_display_cols.append(disp_col)
+    if nowrap_display_cols:
+        styled = styled.set_properties(subset=nowrap_display_cols, **{"white-space": "nowrap"})
+
     html_table = styled.set_table_attributes('class="metrics-table"').to_html()
     st.markdown(f'<div class="metrics-table-wrapper">{html_table}</div>', unsafe_allow_html=True)
 
