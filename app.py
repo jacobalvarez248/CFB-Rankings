@@ -361,8 +361,8 @@ if tab_choice == "📈 Metrics":
     df_core = df[[c for c in core_cols if c in df.columns]].copy()
     merged_df = pd.merge(df_core, metrics_df, on='Team', how='inner')
 
-    # Build which metric columns to show based on the family + unit
-    def _col(name):  # tolerate Explosivenes vs Explosiveness etc.
+    # Which metrics to show?
+    def _col(name):
         candidates = [name, name.replace("Explosiveness", "Explosivenes")]
         for c in candidates:
             if c in merged_df.columns:
@@ -382,30 +382,27 @@ if tab_choice == "📈 Metrics":
     family_cols = []
     for short in METRIC_FAMILIES[metric_choice]:
         c = _col(f"{prefix} {short}")
-        if c:
-            family_cols.append(c)
+        if c: family_cols.append(c)
 
     if not family_cols:
         st.info("No matching metric columns found for your selection.")
         st.stop()
 
-    # Working frame
     filt_df = merged_df.copy()
 
-    # Numeric ranks (tie-aware). Offense: higher is better. Defense: lower is better.
+    # Ranks (higher=better for Off, lower=better for Def)
     rank_cols = []
     for col in family_cols:
-        hib = (prefix == "Off.")  # higher-is-better
+        hib = (prefix == "Off.")
         rk = filt_df[col].rank(ascending=not hib, method="min")
         rk_col = f"{col}__rk"
         filt_df[rk_col] = rk.astype("Int64")
         rank_cols.append(rk_col)
 
-    # Base view (numeric under the hood)
     base_cols = [c for c in ['Rk', 'Team', 'Conf Name', 'Pwr Rtg', 'Off Rtg', 'Def Rtg'] if c in filt_df.columns]
     view = filt_df[base_cols + family_cols + rank_cols].copy()
 
-    # Team column: clickable logo → Team Dashboard (logo only)
+    # Logo-only clickable Team column
     logos_map = logos_df.set_index("Team")["Image URL"].to_dict()
     def team_logo_link(team: str) -> str:
         url = logos_map.get(team, "")
@@ -413,11 +410,11 @@ if tab_choice == "📈 Metrics":
             return ""
         return (
             f'<a href="?selected_team={quote(team)}#📊%20Team%20Dashboards" title="{team}">'
-            f'<img src="{url}" width="20" style="vertical-align:middle;border-radius:3px;"></a>'
+            f'<img src="{url}" width="24" style="vertical-align:middle;border-radius:3px;"></a>'
         )
     view["Team"] = filt_df["Team"].reindex(view.index).map(team_logo_link)
 
-    # Short headers for display
+    # Short headers
     rename_dict = {
         "Rk": "Rk", "Pwr Rtg": "Pwr", "Off Rtg": "Off", "Def Rtg": "Def",
         "Off. Yds/Game": "Y/G", "Off. Pass Yds/Game": "P Y/G", "Off. Rush Yds/Game": "R Y/G", "Off. Points/Game": "Pts/G",
@@ -448,14 +445,11 @@ if tab_choice == "📈 Metrics":
     sort_col = f"{base_col}__rk" if is_rank_sort else base_col
     if sort_col not in view.columns and base_col in view.columns:
         sort_col = base_col
-
-    # Ascending semantics: for rank sorts, checked means best-first (1 → …)
     actual_ascending = (True if asc_box else False) if is_rank_sort else asc_box
     view = view.sort_values(sort_col, ascending=actual_ascending, kind="mergesort")
 
-    # --- Display formatting ---
+    # --- Format for display ---
     def _fmt_metric(col_name: str) -> pd.Series:
-        """Return 'value (rank)' with 1 decimal (rates use 1 decimal %)."""
         s = filt_df[col_name].reindex(view.index)
         rk = filt_df.get(f"{col_name}__rk", None)
         rk = rk.reindex(view.index) if rk is not None else None
@@ -465,78 +459,60 @@ if tab_choice == "📈 Metrics":
             val_txt = s.map(lambda x: "" if pd.isna(x) else f"{x:.1%}")
         else:
             val_txt = s.map(lambda x: "" if pd.isna(x) else f"{x:.1f}")
-
         rk_txt = rk.map(lambda x: "" if (rk is None or pd.isna(x)) else f" ({int(x)})") if rk is not None else ""
-        return (val_txt.fillna("") + (rk_txt if isinstance(rk_txt, pd.Series) else "")).str.strip()
+        return (val_txt.fillna("") + rk_txt.fillna("")).str.strip()
 
     display_view = view.copy()
     for col in family_cols:
         if col in display_view.columns:
             display_view[col] = _fmt_metric(col)
 
-    # Show ratings with TWO decimals
+    # Ratings with two decimals
     for raw_col, disp_col in [("Pwr Rtg", "Pwr"), ("Off Rtg", "Off"), ("Def Rtg", "Def")]:
         if raw_col in filt_df.columns and disp_col in display_view.columns:
             display_view[disp_col] = filt_df[raw_col].reindex(view.index).map(
                 lambda x: "" if pd.isna(x) else f"{float(x):.2f}"
             )
 
-    # Drop helper rank cols from display and rename headers
     display_view = display_view[[c for c in display_view.columns if not c.endswith("__rk")]]
     display_view.rename(columns=rename_dict, inplace=True)
 
-    # === Color gradients ===
+    # === Gradients ===
     BLUE_CMAP = "Blues"
-
-    def _goodness_series(raw: pd.Series, higher_is_better: bool) -> pd.Series:
+    def _goodness_series(raw, hib):
         vals = pd.to_numeric(raw, errors="coerce")
-        if not higher_is_better:
+        if not hib:
             vals = vals.max() - vals
         return vals
-
-    def _text_contrast_from_series(raw: pd.Series, higher_is_better: bool):
+    def _text_contrast_from_series(raw, hib):
         vals = pd.to_numeric(raw, errors="coerce")
-        if not higher_is_better:
+        if not hib:
             vals = vals.max() - vals
         rng = (vals.max() - vals.min()) or 1.0
         norm = (vals - vals.min()) / rng
         return ['color: white' if v >= 0.6 else 'color: black' for v in norm]
 
-    styled = (
-        display_view.style
-            .hide(axis="index")
-            .set_table_styles([
-                {"selector": "th", "props": [("text-align", "center")]},
-                {"selector": "td", "props": [("font-size", "13px")]}
-            ])
-    )
+    styled = display_view.style.hide(axis="index")
 
-    # Ratings gradients: Pwr/Off higher is better; Def lower is better
-    for raw_col, disp_col, hib in [
-        ("Pwr Rtg", "Pwr", True),
-        ("Off Rtg", "Off", True),
-        ("Def Rtg", "Def", False),
-    ]:
+    # Ratings shading
+    for raw_col, disp_col, hib in [("Pwr Rtg", "Pwr", True), ("Off Rtg", "Off", True), ("Def Rtg", "Def", False)]:
         if disp_col in display_view.columns and raw_col in filt_df.columns:
             gmap_vals = _goodness_series(filt_df[raw_col].reindex(view.index), hib)
             styled = styled.background_gradient(cmap=BLUE_CMAP, subset=[disp_col], gmap=gmap_vals)
             styled = styled.apply(lambda s, rc=raw_col, h=hib:
                                   _text_contrast_from_series(filt_df[rc].reindex(s.index), h),
                                   subset=[disp_col])
-
-    # Metric family gradients: offense metrics higher=better; defense metrics lower=better
+    # Metric shading
     for raw_col in family_cols:
         disp_col = rename_dict.get(raw_col, raw_col)
-        if disp_col not in display_view.columns:
-            continue
-        higher_is_better = not raw_col.startswith("Def.")
-        gmap_vals = _goodness_series(filt_df[raw_col].reindex(view.index), higher_is_better)
+        hib = not raw_col.startswith("Def.")
+        gmap_vals = _goodness_series(filt_df[raw_col].reindex(view.index), hib)
         styled = styled.background_gradient(cmap=BLUE_CMAP, subset=[disp_col], gmap=gmap_vals)
-        styled = styled.apply(lambda s, rc=raw_col, h=higher_is_better:
+        styled = styled.apply(lambda s, rc=raw_col, h=hib:
                               _text_contrast_from_series(filt_df[rc].reindex(s.index), h),
                               subset=[disp_col])
 
-    # === No side scroll render ===
+    # === Render (no side scroll) ===
     TABLE_CSS = """
     <style>
     .metrics-table-wrapper { overflow-x: hidden; }
@@ -552,7 +528,6 @@ if tab_choice == "📈 Metrics":
     html_table = styled.set_table_attributes('class="metrics-table"').to_html()
     st.markdown(f'<div class="metrics-table-wrapper">{html_table}</div>', unsafe_allow_html=True)
 
-    # Hint about sort semantics
     st.caption("Ascending = best rank first (1 → …)" if is_rank_sort else "Ascending = low → high")
 
 #---------------------------------------------------------Team Dashboards--------------------------------------------------------
