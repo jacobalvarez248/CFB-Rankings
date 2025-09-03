@@ -93,12 +93,13 @@ elif preselect_team:
 else:
     default_tab = "🏆 Rankings"
 
+tabs = ["🏆 Rankings", "📈 Metrics", "📊 Team Dashboards", "🤝 Comparison"]
 tab_choice = st.radio(
-    " ",
-    ["🏆 Rankings", "📈 Metrics", "📊 Team Dashboards", "🤝 Comparison"],
+    "Select a section",                # give it a real label (or keep " ")
+    tabs,
     horizontal=True,
-    label_visibility="collapsed",
-    index=["🏆 Rankings","📈 Metrics","📊 Team Dashboards","🤝 Comparison"].index(default_tab)
+    index=tabs.index(default_tab),     # simpler index calc
+    key="main_tabs_radio"              # <-- UNIQUE KEY
 )
 
 
