@@ -474,30 +474,71 @@ if tab_choice == "📈 Metrics":
         rk_txt = rk.map(lambda x: "" if (rk is None or pd.isna(x)) else f" ({int(x)})") if rk is not None else ""
         return (val_txt.fillna("") + (rk_txt if isinstance(rk_txt, pd.Series) else "")).str.strip()
 
+    # --- Format metric columns as "value (rank)" with NO decimals ---
+    def _fmt_metric(col_name):
+        s = filt_df[col_name].reindex(view.index)
+        rk = filt_df.get(f"{col_name}__rk", None)
+        rk = rk.reindex(view.index) if rk is not None else None
+    
+        is_rate = ("Success Rate" in col_name) and ("Explosiveness" not in col_name)
+        if is_rate:
+            val_txt = s.map(lambda x: "" if pd.isna(x) else f"{x:.0%}")  # ← no decimals for % (e.g., 54%)
+        else:
+            val_txt = s.map(lambda x: "" if pd.isna(x) else f"{x:.0f}")  # ← no decimals for numbers
+    
+        rk_txt = rk.map(lambda x: "" if (rk is None or pd.isna(x)) else f" ({int(x)})") if rk is not None else ""
+        return (val_txt.fillna("") + (rk_txt if isinstance(rk_txt, pd.Series) else "")).str.strip()
+    
     display_view = view.copy()
     for col in family_cols:
         if col in display_view.columns:
             display_view[col] = _fmt_metric(col)
-
+    
     # Drop helper rank columns from the display
     display_view = display_view[[c for c in display_view.columns if not c.endswith("__rk")]]
-
-    # Rename headers last (so sort UI can use friendly names but we keep internals clean)
+    
+    # Rename headers last
     display_view.rename(columns=rename_dict, inplace=True)
-
-    # --- Render ---
-    # Simple, readable table with HTML enabled (for team logos)
+    
+    # --- No-decimal formatting for rating columns too ---
+    for disp_col in ("Pwr", "Off", "Def"):
+        if disp_col in display_view.columns:
+            # ensure they render with no decimals
+            display_view[disp_col] = display_view[disp_col].map(lambda x: "" if pd.isna(x) else f"{float(x):.0f}")
+    
+    # --- Column-wise color gradients (same map used elsewhere in the app) ---
+    # If you already store your cmap in session_state, we’ll reuse it; otherwise default to 'RdYlGn'.
+    APP_CMAP = st.session_state.get("app_cmap", "RdYlGn")
+    
     styled = (
         display_view.style
-        .hide(axis="index")
-        .set_table_styles([
-            {"selector": "th", "props": [("text-align", "center")]},
-            {"selector": "td", "props": [("font-size", "13px")]}
-        ])
+            .hide(axis="index")
+            .set_table_styles([
+                {"selector": "th", "props": [("text-align", "center")]},
+                {"selector": "td", "props": [("font-size", "13px")]}
+            ])
     )
+    
+    # Apply background gradients using underlying NUMERIC series for each column
+    # Metrics family columns
+    for raw_col in family_cols:
+        disp_col = rename_dict.get(raw_col, raw_col)
+        if disp_col in display_view.columns:
+            # gmap uses the numeric values to color the already-formatted strings
+            gmap_series = filt_df[raw_col].reindex(view.index)
+            styled = styled.background_gradient(cmap=APP_CMAP, subset=[disp_col], gmap=gmap_series)
+    
+    # Ratings (Pwr/Off/Def) columns
+    ratings_map = {"Pwr Rtg": "Pwr", "Off Rtg": "Off", "Def Rtg": "Def"}
+    for raw_col, disp_col in ratings_map.items():
+        if disp_col in display_view.columns and raw_col in filt_df.columns:
+            gmap_series = filt_df[raw_col].reindex(view.index)
+            styled = styled.background_gradient(cmap=APP_CMAP, subset=[disp_col], gmap=gmap_series)
+    
+    # Render
     st.write(styled.to_html(), unsafe_allow_html=True)
-
-    # Tiny hint so the sort checkbox always "makes sense"
+    
+    # Hint text for the sort checkbox behavior
     hint = "Ascending = best rank first (1 → …)" if is_rank_sort else "Ascending = low → high"
     st.caption(hint)
 
