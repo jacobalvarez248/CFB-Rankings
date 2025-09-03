@@ -796,7 +796,7 @@ if tab_choice == "📊 Team Dashboards":
     st.session_state['selected_team'] = selected_team
 
     # Long team name from Schedule!AP:AQ
-    team_long_map = get_team_long_name(schedule_df)
+    team_long_map = get_team_long_name("CFB Rankings Upload.xlsm")
     team_long = team_long_map.get(selected_team, selected_team)
 
     # Logo + ranks + records
