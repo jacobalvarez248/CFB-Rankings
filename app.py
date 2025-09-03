@@ -338,7 +338,9 @@ if tab_choice == "🏆 Rankings":
 
 #-----------------------------------------------------METRICS TAB------------------------------------------------
 if tab_choice == "📈 Metrics":
+    import html
     from urllib.parse import quote
+
     st.markdown("## 📈 Metrics")
 
     # === Controls (no sort dropdown) ===
@@ -362,7 +364,7 @@ if tab_choice == "📈 Metrics":
     df_core = df[[c for c in core_cols if c in df.columns]].copy()
     merged_df = pd.merge(df_core, metrics_df, on='Team', how='inner')
 
-    # Helpers to tolerate header variations (Explosivenes vs Explosiveness, etc.)
+    # Helpers to tolerate header variations
     def _col(name: str):
         for cand in (name, name.replace("Explosiveness", "Explosivenes")):
             if cand in merged_df.columns:
@@ -393,50 +395,38 @@ if tab_choice == "📈 Metrics":
     filt_df = merged_df.copy()
 
     # --- Build TEAM logo map (from logos_df) ---
-    # Expecting at least: ["Team", "Image URL"]; tolerate different case/spaces
     team_logo_map = {}
+    url_col_candidates = ["Image URL", "Logo URL", "URL", "Logo", "Image"]
     if "Team" in logos_df.columns:
-        # Prefer explicit Image URL column name; otherwise try common alternates
-        url_col = "Image URL" if "Image URL" in logos_df.columns else None
-        if not url_col:
-            for candidate in ["Logo URL", "URL", "Logo", "Image"]:
-                if candidate in logos_df.columns:
-                    url_col = candidate
-                    break
+        url_col = next((c for c in url_col_candidates if c in logos_df.columns), None)
         if url_col:
-            # Only rows that actually correspond to teams in filt_df
             team_logo_map = (
                 logos_df.set_index("Team")[url_col]
-                .dropna()
-                .astype(str)
-                .to_dict()
+                .dropna().astype(str).to_dict()
             )
 
     # --- Build CONFERENCE logo map from the SAME logos_df ---
-    # Heuristics to find conference logos in the same sheet:
     conf_logo_map = {}
-    # 1) If there are rows where a column explicitly carries conf name with an image url
-    if "Conf Name" in logos_df.columns and ("Image URL" in logos_df.columns or "Logo URL" in logos_df.columns):
-        _c_url = "Image URL" if "Image URL" in logos_df.columns else "Logo URL"
-        conf_logo_map = logos_df.set_index("Conf Name")[_c_url].dropna().astype(str).to_dict()
-    # 2) Else, if there is a 'Type' column marking 'Conference'
-    elif "Type" in logos_df.columns and ("Image URL" in logos_df.columns or "Logo URL" in logos_df.columns):
-        _c_url = "Image URL" if "Image URL" in logos_df.columns else "Logo URL"
-        conf_rows = logos_df[logos_df["Type"].str.contains("conf", case=False, na=False)]
-        # Use 'Name' or 'Team' as the key for conference rows
-        key_col = "Name" if "Name" in conf_rows.columns else ("Team" if "Team" in conf_rows.columns else None)
-        if key_col:
-            conf_logo_map = conf_rows.set_index(key_col)[_c_url].dropna().astype(str).to_dict()
-    # 3) Else, if neither exists, try to find any row whose 'Team' exactly equals a conference name
+    # 1) If "Conf Name" column exists in logos_df
+    if "Conf Name" in logos_df.columns:
+        url_col = next((c for c in url_col_candidates if c in logos_df.columns), None)
+        if url_col:
+            conf_logo_map = logos_df.set_index("Conf Name")[url_col].dropna().astype(str).to_dict()
+    # 2) Else, try rows marked as conferences by a "Type" column
+    if not conf_logo_map and "Type" in logos_df.columns:
+        url_col = next((c for c in url_col_candidates if c in logos_df.columns), None)
+        if url_col:
+            conf_rows = logos_df[logos_df["Type"].str.contains("conf", case=False, na=False)]
+            key_col = "Name" if "Name" in conf_rows.columns else ("Team" if "Team" in conf_rows.columns else None)
+            if key_col:
+                conf_logo_map = conf_rows.set_index(key_col)[url_col].dropna().astype(str).to_dict()
+    # 3) Else, last resort: treat logos_df["Team"] rows that equal conf names as conf logos
     if not conf_logo_map and "Team" in logos_df.columns:
-        _c_url = None
-        for cnd in ["Image URL", "Logo URL", "URL", "Logo", "Image"]:
-            if cnd in logos_df.columns:
-                _c_url = cnd; break
-        if _c_url:
+        url_col = next((c for c in url_col_candidates if c in logos_df.columns), None)
+        if url_col:
             possible = logos_df[logos_df["Team"].isin(filt_df["Conf Name"].unique())]
             if not possible.empty:
-                conf_logo_map = possible.set_index("Team")[_c_url].dropna().astype(str).to_dict()
+                conf_logo_map = possible.set_index("Team")[url_col].dropna().astype(str).to_dict()
 
     # --- Numeric ranks (tie-aware). Offense higher=better; Defense lower=better. ---
     rank_cols = []
@@ -451,24 +441,26 @@ if tab_choice == "📈 Metrics":
     base_cols = [c for c in ['Rk', 'Team', 'Conf Name', 'Pwr Rtg', 'Off Rtg', 'Def Rtg'] if c in filt_df.columns]
     view = filt_df[base_cols + family_cols + rank_cols].copy()
 
-    # --- Team logos only (clickable → Team Dashboards); no team text ---
+    # --- Team logos only (clickable → Team Dashboards); ASCII-only hash to avoid parser issues ---
+    # Use plain ASCII anchor to avoid emoji in href: "#Team%20Dashboards"
     def team_logo_link(team: str) -> str:
         url = team_logo_map.get(team, "")
         if not url:
-            return ""  # no logo available
+            return ""
+        safe_title = html.escape(str(team))
         return (
-            f'<a href="?selected_team={quote(team)}#📊%20Team%20Dashboards" title="{team}">'
-            f'<img src="{url}" width="22" style="vertical-align:middle;border-radius:3px;"></a>'
+            f'<a href="?selected_team={quote(team)}#Team%20Dashboards" title="{safe_title}">'
+            f'<img src="{html.escape(url)}" width="22" style="vertical-align:middle;border-radius:3px;"></a>'
         )
     view["Team"] = filt_df["Team"].reindex(view.index).map(team_logo_link)
 
-    # --- Conference logos only; if not found, fall back to text so it isn't blank ---
+    # --- Conference logos only; fallback to text if no logo ---
     def conf_logo_cell(conf_name: str) -> str:
         url = conf_logo_map.get(conf_name, "")
-        return (
-            f'<img src="{url}" width="20" style="vertical-align:middle;border-radius:3px;" title="{conf_name}">'
-            if url else (conf_name if isinstance(conf_name, str) else "")
-        )
+        if url:
+            safe_conf = html.escape(str(conf_name))
+            return f'<img src="{html.escape(url)}" width="20" style="vertical-align:middle;border-radius:3px;" title="{safe_conf}">'
+        return html.escape(conf_name) if isinstance(conf_name, str) else ""
     if "Conf Name" in view.columns:
         view["Conf Name"] = filt_df["Conf Name"].reindex(view.index).map(conf_logo_cell)
 
@@ -477,11 +469,11 @@ if tab_choice == "📈 Metrics":
         view = view.sort_values("Rk", ascending=True, kind="mergesort")
 
     # --- Display formatting ---
-    # Short display headers (blank header for Team to avoid odd glyphs)
+    # Short display headers (empty string for Team header to avoid odd glyphs)
     rename_dict = {
         "Rk": "Rk",
-        "Team": "Team",          
-        "Conf Name": "Conf",     
+        "Team": "Team",               # logo-only column
+        "Conf Name": "Conf",      # logo-only column
         "Pwr Rtg": "Pwr", "Off Rtg": "Off", "Def Rtg": "Def",
         "Off. Yds/Game": "Y/G", "Off. Pass Yds/Game": "P Y/G", "Off. Rush Yds/Game": "R Y/G", "Off. Points/Game": "Pts/G",
         "Off. Yds/Play": "Y/Pl", "Off. Pass Yds/Play": "P Y/Pl", "Off. Rush Yds/Play": "R Y/Pl", "Off. Points/Play": "Pts/Pl",
@@ -495,7 +487,6 @@ if tab_choice == "📈 Metrics":
         "Def. Explosiveness": "Expl", "Def. Pass Explosivenes": "P Expl", "Def. Rush Explosiveness": "R Expl",
     }
 
-    # Build display frame
     display_view = view.copy()
 
     # Metrics: "value (rank)" with 1 decimal (rates 1 decimal %)
@@ -516,7 +507,7 @@ if tab_choice == "📈 Metrics":
         if col in display_view.columns:
             display_view[col] = _fmt_metric(col)
 
-    # Ratings as TEXT with exactly TWO decimals (format BEFORE renaming)
+    # Ratings as TEXT with exactly TWO decimals (do this BEFORE renaming)
     for raw_col in ("Pwr Rtg", "Off Rtg", "Def Rtg"):
         if raw_col in display_view.columns and raw_col in filt_df.columns:
             series_numeric = pd.to_numeric(filt_df[raw_col].reindex(display_view.index), errors="coerce")
@@ -546,7 +537,6 @@ if tab_choice == "📈 Metrics":
     # Ratings shading: Pwr/Off higher=better; Def lower=better
     ratings = [("Pwr Rtg", "Pwr", True), ("Off Rtg", "Off", True), ("Def Rtg", "Def", False)]
     for raw_col, disp_col, hib in ratings:
-        # We need gmap from the numeric series, so use filt_df[raw_col]
         if disp_col in display_view.columns and raw_col in filt_df.columns:
             gmap_vals = _goodness_series(filt_df[raw_col].reindex(view.index), hib)
             styled = styled.background_gradient(cmap=BLUE_CMAP, subset=[disp_col], gmap=gmap_vals)
@@ -556,7 +546,6 @@ if tab_choice == "📈 Metrics":
 
     # Metric family shading: offense metrics higher=better; defense metrics lower=better
     for raw_col in family_cols:
-        disp_col = {"Off.": rename_dict.get(raw_col, raw_col), "Def.": rename_dict.get(raw_col, raw_col)}
         disp_col = rename_dict.get(raw_col, raw_col)
         if disp_col not in display_view.columns:
             continue
@@ -567,29 +556,22 @@ if tab_choice == "📈 Metrics":
                               _text_contrast_from_series(filt_df[rc].reindex(s.index), h),
                               subset=[disp_col])
 
-    # === Mobile-friendly render ===
+    # === Mobile-friendly render (ASCII-only; allow mobile horizontal scroll) ===
     TABLE_CSS = """
     <style>
-    .metrics-table-wrapper { overflow-x: hidden; }
+    .metrics-table-wrapper { overflow-x: auto; } /* allow horizontal scroll when needed */
     .metrics-table { table-layout: fixed; width: 100%; border-collapse: collapse; }
     .metrics-table th, .metrics-table td { padding: 2px 4px; line-height: 1.1; font-size: 12px; }
     .metrics-table th { text-align: center; }
     .metrics-table img { display: inline-block; vertical-align: middle; }
-
-    /* Desktop: keep numbers on one line for readability */
-    .metrics-nowrap { white-space: nowrap; }
-
-    /* Mobile: allow safe horizontal scroll + relax nowrap to avoid overlap */
     @media (max-width: 640px) {
-      .metrics-table-wrapper { overflow-x: auto; }
       .metrics-table th, .metrics-table td { font-size: 11px; padding: 2px 3px; }
-      .metrics-nowrap { white-space: normal; }
     }
     </style>
     """
     st.markdown(TABLE_CSS, unsafe_allow_html=True)
 
-    # Mark numeric columns as nowrap on desktop
+    # Keep numeric columns on one line on larger screens (helps readability)
     nowrap_cols = []
     for raw_col in ("Pwr Rtg", "Off Rtg", "Def Rtg"):
         disp = {"Pwr Rtg":"Pwr", "Off Rtg":"Off", "Def Rtg":"Def"}[raw_col]
@@ -597,8 +579,6 @@ if tab_choice == "📈 Metrics":
     for raw_col in family_cols:
         disp = rename_dict.get(raw_col, raw_col)
         if disp in display_view.columns: nowrap_cols.append(disp)
-
-    # Apply nowrap class via minimal inline style trick
     if nowrap_cols:
         styled = styled.set_properties(subset=nowrap_cols, **{"white-space": "nowrap"})
 
