@@ -561,11 +561,11 @@ if tab_choice == "📈 Metrics":
     <style>
     .metrics-table-wrapper { overflow-x: auto; } /* allow horizontal scroll when needed */
     .metrics-table { table-layout: fixed; width: 100%; border-collapse: collapse; }
-    .metrics-table th, .metrics-table td { padding: 2px 4px; line-height: 1.1; font-size: 12px; }
+    .metrics-table th, .metrics-table td { padding: 2px 4px; line-height: 1.1; font-size: 10px; }
     .metrics-table th { text-align: center; }
     .metrics-table img { display: inline-block; vertical-align: middle; }
     @media (max-width: 640px) {
-      .metrics-table th, .metrics-table td { font-size: 11px; padding: 2px 3px; }
+      .metrics-table th, .metrics-table td { font-size: 10px; padding: 2px 3px; }
     }
     </style>
     """
