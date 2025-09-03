@@ -409,11 +409,15 @@ if tab_choice == "📈 Metrics":
 
     # Add team logo inline (HTML)
     logos_map = logos_df.set_index('Team')['Image URL']
-    view.insert(
-        1,
-        'Team',
-        filt_df['Team'].map(lambda t: f'<img src="{logos_map.get(t, "")}" width="20"> {t}' if pd.notna(logos_map.get(t, "")) else t)
+    team_with_logo = filt_df['Team'].map(
+        lambda t: f'<img src="{logos_map.get(t, "")}" width="20"> {t}'
+        if pd.notna(logos_map.get(t, "")) and logos_map.get(t, "") != "" else t
     )
+    
+    if 'Team' in view.columns:
+        view['Team'] = team_with_logo
+    else:
+        view.insert(1, 'Team', team_with_logo)
 
     # Short display names for headers
     rename_dict = {
