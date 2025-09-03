@@ -186,15 +186,18 @@ def projected_score(team_df, home, away, neutral: bool):
     tdf = team_df.set_index('Team', drop=False)
     h = tdf.loc[home]
     a = tdf.loc[away]
-def get_team_long_name(schedule_source=None, sheet_name="Schedule"):
+def get_team_long_name_from_lookup(path="CFB Rankings Upload.xlsm", sheet="Schedule"):
     """
-    Returns {Team: Long Name}.
-    - If schedule_source is a DataFrame: try AP:AQ via a separate read (if a path is also given),
-      then fall back to scanning the DataFrame for columns 'Team' and 'Name'.
-    - If schedule_source is a string path: read AP:AQ first; if that fails, read the whole sheet and scan.
-    - If schedule_source is None: try the default file "CFB Rankings Upload.xlsm".
+    Strictly read the lookup at Schedule!AP:AQ (headers: Team, Name).
+    No fallback to the schedule table (prevents mixing column D with AQ).
     """
     import pandas as pd
+    df = pd.read_excel(path, sheet_name=sheet, usecols="AP:AQ", header=0)
+    # keep only rows that have both Team and Name
+    df = df.dropna(subset=["Team", "Name"])
+    # de-dup by Team (first occurrence wins)
+    df = df.drop_duplicates(subset=["Team"], keep="first")
+    return dict(zip(df["Team"].astype(str), df["Name"].astype(str)))
 
     # Normalize inputs
     path = None
@@ -245,6 +248,7 @@ def schedule_for_team(schedule_source, team, sheet_name="Schedule"):
     import pandas as pd
     import numpy as np
 
+    # Load the sheet if a path was passed
     if isinstance(schedule_source, str):
         sdf = pd.read_excel(schedule_source, sheet_name=sheet_name, header=0)
     else:
@@ -258,21 +262,44 @@ def schedule_for_team(schedule_source, team, sheet_name="Schedule"):
                 return c
         return None
 
+    # Filter to the selected team
     team_col = col('Team')
     if team_col is None:
         return pd.DataFrame(columns=['Game','Date','Opponent','Opp Rank','Projected Spread','Win Probability','Neutral','_opp_team'])
-
     sdf = sdf[sdf[team_col] == team].copy()
 
+    # Column picks (tolerant to naming)
     opp_disp_col = col('Opponent_Display', 'Opponent Display', 'Opponent', 'Opponent Name')
     opp_rank_col = col('Opponent Rank', 'Opp Rank', 'Rank')
     date_col     = col('Date')
     game_col     = col('Game', 'Week')
-    spread_col   = col('Projected Spread', 'Proj. Diff', 'Projected Diff', 'Spread')
-    winp_col     = col('Win Probability', 'Win Prob', 'Win %')
+    spread_col   = col('Projected Spread', 'Proj. Diff', 'Projected Diff', 'Spread')  # your sheet has "Spread"
+    winp_col     = col('Win Probability', 'Win Prob', 'Win %', 'Prob.')              # your sheet has "Prob."
     neutral_col  = col('Neutral')
-    site_col     = col('Site')
+    site_col     = col('Site', 'Venue', 'Home/Away')
+    va_col       = col('v', 'V')  # your sheet's small 'v' column: 'vs', 'at', 'neu'
     opp_team_col = col('Opponent_Team', 'Opponent Team', 'Opp Team', 'Opp_Team')
+
+    # Robust neutral-site computation
+    def compute_neutral(df):
+        # 1) explicit boolean Neutral column
+        if neutral_col and neutral_col in df.columns:
+            try:
+                return df[neutral_col].astype(bool)
+            except Exception:
+                pass
+        # 2) a textual Site/Venue column that may contain 'neutral'
+        if site_col and site_col in df.columns:
+            try:
+                return df[site_col].astype(str).str.contains("neutral", case=False, na=False)
+            except Exception:
+                pass
+        # 3) the 'v' column with values like 'vs', 'at', 'neu'
+        if va_col and va_col in df.columns:
+            vser = df[va_col].astype(str).str.lower()
+            return vser.eq('neu') | vser.str.contains('neutral', na=False)
+        # 4) fallback: all False
+        return pd.Series(False, index=df.index)
 
     out = pd.DataFrame({
         'Game': sdf[game_col] if game_col in sdf else range(1, len(sdf)+1),
@@ -281,14 +308,11 @@ def schedule_for_team(schedule_source, team, sheet_name="Schedule"):
         'Opp Rank': sdf[opp_rank_col] if opp_rank_col in sdf else "",
         'Projected Spread': sdf[spread_col] if spread_col in sdf else "",
         'Win Probability': sdf[winp_col] if winp_col in sdf else "",
-        'Neutral': (
-            sdf[neutral_col].astype(bool)
-            if neutral_col in sdf
-            else sdf.get(site_col, "").astype(str).str.contains("neutral", case=False, na=False)
-        ),
+        'Neutral': compute_neutral(sdf),
         '_opp_team': sdf[opp_team_col] if opp_team_col in sdf else None
     })
 
+    # Normalize win probability to numeric 0..1 for bars
     def parse_wp(x):
         if pd.isna(x): return np.nan
         s = str(x).strip().lower()
@@ -299,14 +323,13 @@ def schedule_for_team(schedule_source, team, sheet_name="Schedule"):
             except: return np.nan
         try:
             f = float(s)
-            return f if 0 <= f <= 1 else (f/100.0 if f>1 else f)
+            return f if 0 <= f <= 1 else (f/100.0 if f > 1 else f)
         except:
             return np.nan
 
     out['Win Probability (num)'] = out['Win Probability'].map(parse_wp)
     out['Opponent'] = out['Opponent'].fillna("").astype(str)
     return out
-
 
 def render_schedule_table(table_df, team_map_for_logo, on_click_query_builder):
     """
