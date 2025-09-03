@@ -234,46 +234,46 @@ def get_team_long_name(schedule_source=None, sheet_name="Schedule"):
 
     return {}
 
-def schedule_for_team(schedule_df, team):
+def schedule_for_team(schedule_source, team, sheet_name="Schedule"):
     """
-    Return a clean schedule table for a selected team.
-    Expected columns (case/space tolerant): Game, Date, Opponent_Display, Opponent Rank,
-    Projected Spread (or Proj. Diff), Win Probability (may be %, float, or 'Win'/'Loss'),
-    and optional Neutral (bool) or Site text.
+    schedule_source can be either:
+      - a pandas DataFrame of the Schedule sheet, or
+      - a string path to the workbook (it will read the sheet).
+
+    Returns a normalized schedule DataFrame for the given team.
     """
-    sdf = schedule_df.copy()
+    import pandas as pd
+    import numpy as np
+
+    if isinstance(schedule_source, str):
+        sdf = pd.read_excel(schedule_source, sheet_name=sheet_name, header=0)
+    else:
+        sdf = schedule_source.copy()
+
     sdf.columns = sdf.columns.str.strip()
 
-    # Try common column spellings
     def col(*cands):
         for c in cands:
             if c in sdf.columns:
                 return c
         return None
 
-    # Filter rows for this team
     team_col = col('Team')
     if team_col is None:
         return pd.DataFrame(columns=['Game','Date','Opponent','Opp Rank','Projected Spread','Win Probability','Neutral','_opp_team'])
 
     sdf = sdf[sdf[team_col] == team].copy()
 
-    # Build a friendly “Opponent” display column
     opp_disp_col = col('Opponent_Display', 'Opponent Display', 'Opponent', 'Opponent Name')
     opp_rank_col = col('Opponent Rank', 'Opp Rank', 'Rank')
     date_col     = col('Date')
     game_col     = col('Game', 'Week')
     spread_col   = col('Projected Spread', 'Proj. Diff', 'Projected Diff', 'Spread')
     winp_col     = col('Win Probability', 'Win Prob', 'Win %')
-
-    # Neutral site inference
     neutral_col  = col('Neutral')
     site_col     = col('Site')
-
-    # Try to also capture the opponent team key for linking
     opp_team_col = col('Opponent_Team', 'Opponent Team', 'Opp Team', 'Opp_Team')
 
-    # Basic normalize
     out = pd.DataFrame({
         'Game': sdf[game_col] if game_col in sdf else range(1, len(sdf)+1),
         'Date': sdf[date_col] if date_col in sdf else "",
@@ -289,14 +289,11 @@ def schedule_for_team(schedule_df, team):
         '_opp_team': sdf[opp_team_col] if opp_team_col in sdf else None
     })
 
-    # Coerce Win Probability:
-    # - If text "Win"/"Loss", make it 1.0 or 0.0.
-    # - If like "87.4%", make it 0.874.
     def parse_wp(x):
         if pd.isna(x): return np.nan
         s = str(x).strip().lower()
-        if s in ("win", "w"):  return 1.0
-        if s in ("loss","l"):  return 0.0
+        if s in ("win","w"):  return 1.0
+        if s in ("loss","l"): return 0.0
         if s.endswith('%'):
             try: return float(s[:-1]) / 100.0
             except: return np.nan
@@ -307,11 +304,9 @@ def schedule_for_team(schedule_df, team):
             return np.nan
 
     out['Win Probability (num)'] = out['Win Probability'].map(parse_wp)
-
-    # Clean opponent text for display
     out['Opponent'] = out['Opponent'].fillna("").astype(str)
-
     return out
+
 
 def render_schedule_table(table_df, team_map_for_logo, on_click_query_builder):
     """
