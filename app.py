@@ -338,6 +338,7 @@ if tab_choice == "🏆 Rankings":
 
 #-----------------------------------------------------METRICS TAB------------------------------------------------
 if tab_choice == "📈 Metrics":
+    from urllib.parse import quote
     st.markdown("## 📈 Metrics")
 
     # === Controls ===
@@ -361,7 +362,7 @@ if tab_choice == "📈 Metrics":
     merged_df = pd.merge(df_core, metrics_df, on='Team', how='inner')
 
     # Build which metric columns to show based on the family + unit
-    def _col(name):  # helper to tolerate minor header differences/typos
+    def _col(name):  # tolerate Explosivenes vs Explosiveness etc.
         candidates = [name, name.replace("Explosiveness", "Explosivenes")]
         for c in candidates:
             if c in merged_df.columns:
@@ -380,52 +381,43 @@ if tab_choice == "📈 Metrics":
     prefix = "Off." if unit_choice == "Offense" else "Def."
     family_cols = []
     for short in METRIC_FAMILIES[metric_choice]:
-        colname = f"{prefix} {short}"
-        c = _col(colname)
-        if c: family_cols.append(c)
+        c = _col(f"{prefix} {short}")
+        if c:
+            family_cols.append(c)
 
-    # If nothing matched (shouldn't happen), bail out gracefully
     if not family_cols:
         st.info("No matching metric columns found for your selection.")
         st.stop()
 
-    # Keep a working frame (all numeric)
+    # Working frame
     filt_df = merged_df.copy()
 
-    # Compute numeric ranks (tie-aware). For Offense, higher is better; for Defense, lower is better.
+    # Numeric ranks (tie-aware). Offense: higher is better. Defense: lower is better.
     rank_cols = []
     for col in family_cols:
-        if col not in filt_df.columns:
-            continue
-        higher_is_better = (prefix == "Off.")
-        rk = filt_df[col].rank(ascending=not higher_is_better, method="min")
+        hib = (prefix == "Off.")  # higher-is-better
+        rk = filt_df[col].rank(ascending=not hib, method="min")
         rk_col = f"{col}__rk"
         filt_df[rk_col] = rk.astype("Int64")
         rank_cols.append(rk_col)
 
-    # Build the view that we’ll sort (still numeric under the hood)
+    # Base view (numeric under the hood)
     base_cols = [c for c in ['Rk', 'Team', 'Conf Name', 'Pwr Rtg', 'Off Rtg', 'Def Rtg'] if c in filt_df.columns]
     view = filt_df[base_cols + family_cols + rank_cols].copy()
 
-    # --- clickable logo that routes to Team Dashboards (same pattern as Rankings tab) ---
+    # Team column: clickable logo → Team Dashboard (logo only)
     logos_map = logos_df.set_index("Team")["Image URL"].to_dict()
-    
     def team_logo_link(team: str) -> str:
         url = logos_map.get(team, "")
         if not url:
-            return ""  # no logo available
+            return ""
         return (
-            f'<a href="?selected_team={quote(team)}#📊%20Team%20Dashboards">'
+            f'<a href="?selected_team={quote(team)}#📊%20Team%20Dashboards" title="{team}">'
             f'<img src="{url}" width="20" style="vertical-align:middle;border-radius:3px;"></a>'
         )
-    
-    # Overwrite the Team column with the clickable logo-only cell
-    if "Team" in view.columns:
-        view["Team"] = filt_df["Team"].reindex(view.index).map(team_logo_link)
-    else:
-        view.insert(1, "Team", filt_df["Team"].reindex(view.index).map(team_logo_link))
+    view["Team"] = filt_df["Team"].reindex(view.index).map(team_logo_link)
 
-    # Short display names for headers
+    # Short headers for display
     rename_dict = {
         "Rk": "Rk", "Pwr Rtg": "Pwr", "Off Rtg": "Off", "Def Rtg": "Def",
         "Off. Yds/Game": "Y/G", "Off. Pass Yds/Game": "P Y/G", "Off. Rush Yds/Game": "R Y/G", "Off. Points/Game": "Pts/G",
@@ -433,7 +425,6 @@ if tab_choice == "📈 Metrics":
         "Off. EPA/Play": "EPA", "Off. Pass EPA/Play": "P EPA", "Off. Rush EPA/Play": "R EPA", "Off. Points/Scoring Opp.": "Pts/ScOpp",
         "Off. Success Rate": "Succ%", "Off. Pass Success Rate": "P Succ%", "Off. Rush Success Rate": "R Succ%",
         "Off. Explosiveness": "Expl", "Off. Pass Explosivenes": "P Expl", "Off. Rush Explosiveness": "R Expl",
-
         "Def. Yds/Game": "Y/G", "Def. Pass Yds/Game": "P Y/G", "Def. Rush Yds/Game": "R Y/G", "Def. Points/Game": "Pts/G",
         "Def. Yds/Play": "Y/Pl", "Def. Pass Yds/Play": "P Y/Pl", "Def. Rush Yds/Play": "R Y/Pl", "Def. Points/Play": "Pts/Pl",
         "Def. EPA/Play": "EPA", "Def. Pass EPA/Play": "P EPA", "Def. Rush EPA/Play": "R EPA", "Def. Points/Scoring Opp.": "Pts/ScOpp",
@@ -442,101 +433,75 @@ if tab_choice == "📈 Metrics":
     }
     reverse_rename = {v: k for k, v in rename_dict.items()}
 
-    # Round ratings (keep numeric)
-    for col in ["Pwr Rtg", "Off Rtg", "Def Rtg"]:
-        if col in view.columns:
-            view[col] = view[col].round(1)
-
-    # --- Sorting UI (uses display names) ---
-    sort_placeholder = st.empty()
+    # --- Sorting UI ---
     display_cols = [rename_dict.get(c, c) for c in base_cols + family_cols]
-    with sort_placeholder:
-        sort_target_display = st.selectbox("Sort by", options=display_cols, index=display_cols.index("Rk") if "Rk" in display_cols else 0, key="metrics_sort_by")
-        asc_box = st.checkbox("Ascending", value=True, key="metrics_sort_asc")
+    sort_target_display = st.selectbox(
+        "Sort by",
+        options=display_cols,
+        index=display_cols.index("Rk") if "Rk" in display_cols else 0,
+        key="metrics_sort_by",
+    )
+    asc_box = st.checkbox("Ascending", value=True, key="metrics_sort_asc")
 
-    # Map back to raw column
     base_col = reverse_rename.get(sort_target_display, sort_target_display)
     is_rank_sort = base_col in family_cols
     sort_col = f"{base_col}__rk" if is_rank_sort else base_col
-
-    # Intuitive behavior: when sorting by a RANK, "Ascending" means best-first (1 → 2 → 3)
-    actual_ascending = (True if asc_box else False) if is_rank_sort else asc_box
     if sort_col not in view.columns and base_col in view.columns:
         sort_col = base_col
 
+    # Ascending semantics: for rank sorts, checked means best-first (1 → …)
+    actual_ascending = (True if asc_box else False) if is_rank_sort else asc_box
     view = view.sort_values(sort_col, ascending=actual_ascending, kind="mergesort")
 
-    # --- Format metric columns as "value (rank)" ONLY for display ---
-    def _fmt_metric(col_name):
-        s = filt_df[col_name].reindex(view.index)
-        rk = filt_df[f"{col_name}__rk"].reindex(view.index) if f"{col_name}__rk" in filt_df.columns else None
-
-        # percent for success rate; everything else 1 decimal
-        is_rate = ("Success Rate" in col_name) and ("Explosiveness" not in col_name)
-        if is_rate:
-            val_txt = s.map(lambda x: "" if pd.isna(x) else f"{x:.1%}")
-        else:
-            val_txt = s.map(lambda x: "" if pd.isna(x) else f"{x:.1f}")
-        rk_txt = rk.map(lambda x: "" if (rk is None or pd.isna(x)) else f" ({int(x)})") if rk is not None else ""
-        return (val_txt.fillna("") + (rk_txt if isinstance(rk_txt, pd.Series) else "")).str.strip()
-
-    # --- Format metric columns as "value (rank)" with 1 decimal (rates too) ---
-    def _fmt_metric(col_name):
+    # --- Display formatting ---
+    def _fmt_metric(col_name: str) -> pd.Series:
+        """Return 'value (rank)' with 1 decimal (rates use 1 decimal %)."""
         s = filt_df[col_name].reindex(view.index)
         rk = filt_df.get(f"{col_name}__rk", None)
         rk = rk.reindex(view.index) if rk is not None else None
-    
-        # 1 decimal for rates and numbers (except ratings handled later)
+
         is_rate = ("Success Rate" in col_name) and ("Explosiveness" not in col_name)
         if is_rate:
             val_txt = s.map(lambda x: "" if pd.isna(x) else f"{x:.1%}")
         else:
             val_txt = s.map(lambda x: "" if pd.isna(x) else f"{x:.1f}")
-    
+
         rk_txt = rk.map(lambda x: "" if (rk is None or pd.isna(x)) else f" ({int(x)})") if rk is not None else ""
         return (val_txt.fillna("") + (rk_txt if isinstance(rk_txt, pd.Series) else "")).str.strip()
-    
+
     display_view = view.copy()
     for col in family_cols:
         if col in display_view.columns:
             display_view[col] = _fmt_metric(col)
-    
-    # Drop helper rank cols from the display table
-    display_view = display_view[[c for c in display_view.columns if not c.endswith("__rk")]]
-    
-    # --- Header rename for display ---
-    display_view.rename(columns=rename_dict, inplace=True)
-    
-    # --- Ratings: show TWO decimals for Pwr/Off/Def ---
+
+    # Show ratings with TWO decimals
     for raw_col, disp_col in [("Pwr Rtg", "Pwr"), ("Off Rtg", "Off"), ("Def Rtg", "Def")]:
-        if disp_col in display_view.columns and raw_col in filt_df.columns:
+        if raw_col in filt_df.columns and disp_col in display_view.columns:
             display_view[disp_col] = filt_df[raw_col].reindex(view.index).map(
                 lambda x: "" if pd.isna(x) else f"{float(x):.2f}"
             )
-    
-    # === Color gradients: "best" is darkest blue, with white text ===
-    from matplotlib import cm
-    
-    BLUE_CMAP = "Blues"  # consistent across app; change once if you use a named constant
-    
-    def _goodness_series(raw, higher_is_better: bool):
-        """Return a Series where higher = better (invert if needed)."""
-        vals = raw.astype(float)
+
+    # Drop helper rank cols from display and rename headers
+    display_view = display_view[[c for c in display_view.columns if not c.endswith("__rk")]]
+    display_view.rename(columns=rename_dict, inplace=True)
+
+    # === Color gradients ===
+    BLUE_CMAP = "Blues"
+
+    def _goodness_series(raw: pd.Series, higher_is_better: bool) -> pd.Series:
+        vals = pd.to_numeric(raw, errors="coerce")
         if not higher_is_better:
-            # invert so 'better' becomes larger
             vals = vals.max() - vals
         return vals
-    
-    def _text_contrast_from_series(raw, higher_is_better: bool):
-        """Styler.apply helper: white text on strong blue cells (top ~40%)."""
-        vals = raw.astype(float)
+
+    def _text_contrast_from_series(raw: pd.Series, higher_is_better: bool):
+        vals = pd.to_numeric(raw, errors="coerce")
         if not higher_is_better:
             vals = vals.max() - vals
-        rng = vals.max() - vals.min()
-        norm = (vals - vals.min()) / (rng if rng != 0 else 1.0)
-        # white text on darker blues
+        rng = (vals.max() - vals.min()) or 1.0
+        norm = (vals - vals.min()) / rng
         return ['color: white' if v >= 0.6 else 'color: black' for v in norm]
-    
+
     styled = (
         display_view.style
             .hide(axis="index")
@@ -545,55 +510,50 @@ if tab_choice == "📈 Metrics":
                 {"selector": "td", "props": [("font-size", "13px")]}
             ])
     )
-    
-    # Ratings gradients (Pwr/Off higher=better; Def lower=better)
-    for raw_col, disp_col, higher_is_better in [
+
+    # Ratings gradients: Pwr/Off higher is better; Def lower is better
+    for raw_col, disp_col, hib in [
         ("Pwr Rtg", "Pwr", True),
         ("Off Rtg", "Off", True),
         ("Def Rtg", "Def", False),
     ]:
         if disp_col in display_view.columns and raw_col in filt_df.columns:
-            gmap_vals = _goodness_series(filt_df[raw_col].reindex(view.index), higher_is_better)
+            gmap_vals = _goodness_series(filt_df[raw_col].reindex(view.index), hib)
             styled = styled.background_gradient(cmap=BLUE_CMAP, subset=[disp_col], gmap=gmap_vals)
-            styled = styled.apply(lambda s, rc=raw_col, hib=higher_is_better:
-                                  _text_contrast_from_series(filt_df[rc].reindex(s.index), hib),
+            styled = styled.apply(lambda s, rc=raw_col, h=hib:
+                                  _text_contrast_from_series(filt_df[rc].reindex(s.index), h),
                                   subset=[disp_col])
-    
-    # Metric family columns: Offense higher=better, Defense lower=better
+
+    # Metric family gradients: offense metrics higher=better; defense metrics lower=better
     for raw_col in family_cols:
         disp_col = rename_dict.get(raw_col, raw_col)
         if disp_col not in display_view.columns:
             continue
-        is_def_metric = raw_col.startswith("Def.")
-        higher_is_better = not is_def_metric
-    
+        higher_is_better = not raw_col.startswith("Def.")
         gmap_vals = _goodness_series(filt_df[raw_col].reindex(view.index), higher_is_better)
         styled = styled.background_gradient(cmap=BLUE_CMAP, subset=[disp_col], gmap=gmap_vals)
-        styled = styled.apply(lambda s, rc=raw_col, hib=higher_is_better:
-                              _text_contrast_from_series(filt_df[rc].reindex(s.index), hib),
+        styled = styled.apply(lambda s, rc=raw_col, h=higher_is_better:
+                              _text_contrast_from_series(filt_df[rc].reindex(s.index), h),
                               subset=[disp_col])
-    # Make table fixed-layout and prevent horizontal scrolling
+
+    # === No side scroll render ===
     TABLE_CSS = """
     <style>
     .metrics-table-wrapper { overflow-x: hidden; }
-    .metrics-table-wrapper table { table-layout: fixed; width: 100%; }
-    .metrics-table-wrapper th, .metrics-table-wrapper td {
+    .metrics-table { table-layout: fixed; width: 100%; border-collapse: collapse; }
+    .metrics-table th, .metrics-table td {
       white-space: normal; word-break: break-word; padding: 4px 6px;
     }
-    .metrics-table-wrapper th { text-align: center; }
+    .metrics-table th { text-align: center; }
+    .metrics-table img { display: inline-block; vertical-align: middle; }
     </style>
     """
-    
-    html_table = styled.to_html()
-    st.write(TABLE_CSS + f'<div class="metrics-table-wrapper">{html_table}</div>', unsafe_allow_html=True)
+    st.markdown(TABLE_CSS, unsafe_allow_html=True)
+    html_table = styled.set_table_attributes('class="metrics-table"').to_html()
+    st.markdown(f'<div class="metrics-table-wrapper">{html_table}</div>', unsafe_allow_html=True)
 
-    # Render table
-    st.write(styled.to_html(), unsafe_allow_html=True)
-    
-    # Hint text for the sort checkbox behavior (unchanged)
-    hint = "Ascending = best rank first (1 → …)" if is_rank_sort else "Ascending = low → high"
-    st.caption(hint)
-
+    # Hint about sort semantics
+    st.caption("Ascending = best rank first (1 → …)" if is_rank_sort else "Ascending = low → high")
 
 #---------------------------------------------------------Team Dashboards--------------------------------------------------------
 if tab_choice == "📊 Team Dashboards":
