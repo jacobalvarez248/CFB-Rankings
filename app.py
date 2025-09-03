@@ -833,7 +833,7 @@ if tab_choice == "📊 Team Dashboards":
 
     # ---------------- Schedule table ----------------
     st.markdown("#### Schedule")
-    team_sched = schedule_for_team(schedule_df, selected_team)
+    team_sched = schedule_for_team("CFB Rankings Upload.xlsm", selected_team)
 
     # Build a map of team -> logo (for future use if you want to show opponent logos)
     team_logo_map = logos_df.set_index('Team')['Image URL'].dropna().astype(str).to_dict()
