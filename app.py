@@ -608,20 +608,69 @@ if tab_choice == "📈 Metrics":
     st.markdown(f'<div class="metrics-table-wrapper">{html_table}</div>', unsafe_allow_html=True)
 
 #---------------------------------------------------------Team Dashboards--------------------------------------------------------
+#---------------------------------------------------------Team Dashboards--------------------------------------------------------
 if tab_choice == "📊 Team Dashboards":
     st.markdown("## 📊 Team Dashboards")
-    all_teams = df.index.tolist()
-    if st.session_state['selected_team'] in all_teams:
-        default_index = all_teams.index(st.session_state['selected_team'])
-    else:
-        default_index = 0
 
-    selected_team = st.selectbox("Select a Team", options=all_teams, index=default_index)
+    # Re-load the small subset we need directly from the workbook
+    @st.cache_data
+    def _team_basics():
+        exp = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Expected Wins', header=1)
+        logos = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Logos', header=1)[['Team','Image URL']]
+        # Compute ranks (Power/Off high=good; Def low=good)
+        exp['Pwr Rank'] = exp['Power Rating'].rank(ascending=False, method='min').astype(int)
+        exp['Off Rank'] = exp['Offensive Rating'].rank(ascending=False, method='min').astype(int)
+        exp['Def Rank'] = exp['Defensive Rating'].rank(ascending=True,  method='min').astype(int)
+
+        # Keep only what we need
+        keep = [
+            'Team','Power Rating','Offensive Rating','Defensive Rating',
+            'Pwr Rank','Off Rank','Def Rank',
+            'Current Wins','Current Losses',
+            'Projected Overall Wins','Projected Overall Losses'
+        ]
+        exp = exp[keep].copy()
+        exp = exp.merge(logos, on='Team', how='left')
+        exp.set_index('Team', inplace=True)
+        return exp
+
+    basics = _team_basics()
+
+    all_teams = sorted(basics.index.tolist())
+    # Respect preselected team from query params or session (keeps your existing behavior)
+    pre_sel = st.session_state.get('selected_team')
+    default_idx = all_teams.index(pre_sel) if pre_sel in all_teams else 0
+    selected_team = st.selectbox("Select a Team", options=all_teams, index=default_idx)
     st.session_state['selected_team'] = selected_team
 
-    team_data = df.loc[[selected_team]]
-    st.markdown(f"### Dashboard for {selected_team}")
-    st.dataframe(team_data.T, use_container_width=True)
+    row = basics.loc[selected_team]
+
+    # Pretty strings
+    record_txt = f"{int(row['Current Wins'])}-{int(row['Current Losses'])}"
+    exp_record_txt = f"{row['Projected Overall Wins']:.1f}-{row['Projected Overall Losses']:.1f}"
+
+    logo_url = row.get('Image URL', '') or ''
+    team_name_html = f"""
+    <div style="display:flex;align-items:center;gap:12px;">
+        <div style="flex:0 0 56px;height:56px;border:1px solid #ddd;border-radius:6px;
+                    display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fff;">
+            {'<img src="'+logo_url+'" style="max-width:100%;max-height:100%;">' if logo_url else ''}
+        </div>
+        <div style="line-height:1.15;">
+            <div style="font-size:18px;font-weight:700;">{selected_team}</div>
+            <div style="font-size:12px;color:#333;">
+                Rank: {row['Pwr Rank']} &nbsp;&nbsp; Off Rank: {row['Off Rank']} &nbsp;&nbsp; Def Rank: {row['Def Rank']}
+            </div>
+            <div style="font-size:12px;color:#333;">Record: {record_txt}</div>
+            <div style="font-size:12px;color:#333;">Expected Record: {exp_record_txt}</div>
+        </div>
+    </div>
+    """
+
+    st.markdown(team_name_html, unsafe_allow_html=True)
+
+    # (Optional) faint divider
+    st.markdown("<hr style='opacity:.2;'>", unsafe_allow_html=True)
 
 # ----------------------------------------------------- COMPARISON TAB ------------------------------------------------
 if tab_choice == "🤝 Comparison":
