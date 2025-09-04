@@ -761,41 +761,59 @@ if tab_choice == "📊 Team Dashboards":
     sched_df = _team_schedule_df(selected_team)
     
     st.markdown("#### Schedule")
-    
-    # Stronger CSS: blue headers; also prevent horizontal scroll by ensuring the inner container doesn't overflow
+
+    # -------------- CSS: kill horizontal scroll + force blue headers --------------
     st.markdown("""
     <style>
-    /* Blue header background + text */
-    [data-testid="stDataFrame"] thead tr th {
-      background-color: #e6f0ff !important;
-    }
-    [data-testid="stDataFrame"] thead tr th * {
-      color: #1f4ed8 !important;
+    /* 1) Make the outer element and inner grid never scroll horizontally */
+    [data-testid="stHorizontalBlock"] { overflow-x: clip !important; }
+    .element-container { overflow-x: clip !important; }
+    [data-testid="stDataFrame"] { overflow-x: clip !important; }
+    [data-testid="stDataFrame"] [role="grid"] { overflow-x: clip !important; max-width: 100% !important; }
+    
+    /* 2) Blue header background + blue header text (robust selector) */
+    [data-testid="stDataFrame"] [role="columnheader"] {
+      background-color: #e6f0ff !important;   /* light blue */
+      color: #1f4ed8 !important;               /* header text blue */
       font-weight: 700 !important;
+      border-bottom: 1px solid #c9d8ff !important;
     }
-    /* Make the table use all width and clip any accidental overflow */
-    [data-testid="stDataFrame"] { overflow-x: hidden !important; }
+    
+    /* 3) Keep cells from forcing horizontal growth */
+    [data-testid="stDataFrame"] [role="gridcell"] {
+      white-space: nowrap !important;      /* match Streamlit look */
+      text-overflow: ellipsis !important;  /* truncate instead of widening */
+      overflow: hidden !important;
+    }
+    
+    /* 4) Let Opponent wrap if you prefer no truncation; if so, swap to 'normal' */
+    [data-testid="stDataFrame"] [data-testid="column-Opponent"] [role="gridcell"] {
+      white-space: nowrap !important; /* change to 'normal' to wrap lines */
+    }
     </style>
     """, unsafe_allow_html=True)
     
     if sched_df.empty:
         st.info("No schedule rows found for this team on the **Schedule** sheet.")
     else:
-        # Fixed column widths so it fits (no side scrolling)
+        # TIP: Up top in your app, ensure wide layout:
+        # st.set_page_config(layout="wide")
+    
         st.dataframe(
             sched_df,
             use_container_width=True,
             hide_index=True,
             column_config={
+                # Keep columns compact to avoid horizontal scroll on smaller screens
                 "Game": st.column_config.NumberColumn("Game", format="%d", width="small"),
-                "Opponent": st.column_config.TextColumn("Opponent", width="large"),
+                "Opponent": st.column_config.TextColumn("Opponent", width="large"),  # main flex column
                 "Spread": st.column_config.TextColumn("Spread", width="small"),
                 "Win Prob": st.column_config.ProgressColumn(
                     "Win Prob",
                     min_value=0.0,
                     max_value=100.0,
                     format="%.1f%%",
-                    width="medium",
+                    width="small",   # keep the progress column narrow to prevent overflow
                 ),
             },
         )
