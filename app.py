@@ -671,10 +671,9 @@ if tab_choice == "📊 Team Dashboards":
     # (Optional) faint divider
     st.markdown("<hr style='opacity:.2;'>", unsafe_allow_html=True)
 
-    # -------------------------- Team Schedule (theme-matching, bars, rounded spreads) --------------------------
+    # -------------------------- Team Schedule (blue bars, percent labels, inverted spread) --------------------------
     @st.cache_data
     def _team_schedule_df(team_name: str):
-        # Read with correct header row (Excel row 1)
         sch = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Schedule', header=0)
         sch.columns = [str(c).strip() for c in sch.columns]
     
@@ -698,33 +697,30 @@ if tab_choice == "📊 Team Dashboards":
         s['Opponent'] = (s[loc_col].fillna('').astype(str).str.strip() + ' ' +
                          s[opp_col].fillna('').astype(str).str.strip()).str.strip()
     
-        # Win Prob -> 0..1 float (kept numeric for real data bars)
-        def _to_prob(x):
+        # Win Prob -> percent scale (0..100), keep as float for real data bars
+        def _to_prob_pct(x):
             if pd.isna(x): return np.nan
             if isinstance(x, str):
                 xs = x.strip().replace('%', '')
                 try:
                     v = float(xs)
-                    return v/100 if v > 1 else v
+                    return v if v > 1 else v * 100.0
                 except:
                     return np.nan
             try:
                 v = float(x)
-                return v/100 if v > 1 else v
+                return v if v > 1 else v * 100.0
             except:
                 return np.nan
     
-        s['Win Prob'] = s[wp_col].apply(_to_prob)
+        s['Win Prob'] = s[wp_col].apply(_to_prob_pct)
     
-        # Spread: round numerics to nearest .5 (show one decimal); WIN/LOSS -> colored labels
-        def _round_to_half(v):
-            try:
-                fv = float(str(v).replace('+', '').strip())
-                return round(fv * 2) / 2.0
-            except:
-                return np.nan
+        # Spread: round to nearest .5, then invert sign; keep WIN/LOSS text
+        def _round_half(v):
+            fv = float(v)
+            return round(fv * 2) / 2.0
     
-        def _spread_display(v):
+        def _invert_and_format(v):
             if pd.isna(v) or str(v).strip().lower() in ('none', ''):
                 return ''
             txt = str(v).strip()
@@ -733,13 +729,15 @@ if tab_choice == "📊 Team Dashboards":
                 return '🟢 WIN'
             if 'LOSS' in up or 'LOSE' in up:
                 return '🔴 LOSS'
-            # numeric-ish -> round and format to 1 decimal (.0 or .5)
             try:
-                return f"{_round_to_half(txt):.1f}"
+                val = float(txt.replace('+',''))
+                val = -1.0 * _round_half(val)                 # invert
+                sign = '+' if val > 0 else ''                 # show + sign for positive
+                return f"{sign}{val:.1f}"
             except:
-                return txt  # fallback: show as-is
+                return txt
     
-        s['Spread'] = s[spread_col].apply(_spread_display)
+        s['Spread'] = s[spread_col].apply(_invert_and_format)
     
         out = (
             s.rename(columns={game_col: 'Game'})
@@ -751,10 +749,21 @@ if tab_choice == "📊 Team Dashboards":
     sched_df = _team_schedule_df(selected_team)
     
     st.markdown("#### Schedule")
+    
+    # OPTIONAL: make the dataframe headers blue to match the rest of your app
+    # (tweak these two hex values to your brand if needed)
+    st.markdown("""
+    <style>
+    [data-testid="stDataFrame"] thead tr th {
+      background-color: #e6f0ff;   /* light blue header bg */
+      color: #1f4ed8;              /* header text blue */
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
     if sched_df.empty:
         st.info("No schedule rows found for this team on the **Schedule** sheet.")
     else:
-        # Render with theme-styled headers, true data bars, and no index
         st.dataframe(
             sched_df,
             use_container_width=True,
@@ -762,19 +771,17 @@ if tab_choice == "📊 Team Dashboards":
             column_config={
                 "Game": st.column_config.NumberColumn("Game", format="%d"),
                 "Opponent": st.column_config.TextColumn("Opponent"),
-                # Spread is a text column so WIN/LOSS show with green/red emoji; numerics show 1 decimal (.0/.5)
                 "Spread": st.column_config.TextColumn("Spread"),
-                # Real progress/data bar from 0.00 to 1.00, shown as %
+                # Bars use 0..100 scale and display as percentages like 84.7%
                 "Win Prob": st.column_config.ProgressColumn(
                     "Win Prob",
-                    format="%.0f%%",
                     min_value=0.0,
-                    max_value=1.0,
+                    max_value=100.0,
+                    format="%.1f%%",
+                    bar_color="#3B82F6",  # blue
                 ),
             },
         )
-
-
 
 # ----------------------------------------------------- COMPARISON TAB ------------------------------------------------
 if tab_choice == "🤝 Comparison":
