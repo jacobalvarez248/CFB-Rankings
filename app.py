@@ -932,7 +932,6 @@ if tab_choice == "📊 Team Dashboards":
 
         if "Opponent" in df.columns and {"Opp Name","Neutral","Away"}.issubset(df.columns):
             def _opp_link_row(row):
-                # If this is an away game for the selected team, opponent is home
                 is_away = bool(row["Away"])
                 home = row["Opp Name"] if is_away else selected_team
                 away = selected_team if is_away else row["Opp Name"]
