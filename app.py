@@ -762,7 +762,7 @@ if tab_choice == "📊 Team Dashboards":
     
     st.markdown("#### Schedule")
 
-    # ---------- CSS (compact text, blue headers normal case, pill progress bars) ----------
+    # ---------- CSS (compact text, blue headers, pill progress bars) ----------
     st.markdown("""
     <style>
     .block-container { overflow-x: hidden !important; }
@@ -770,13 +770,13 @@ if tab_choice == "📊 Team Dashboards":
       table-layout: fixed;
       width: 100% !important;
       border-collapse: collapse;
-      font-size: 13px;           /* shrink text a bit */
+      font-size: 13px;
       line-height: 1.25;
     }
     .schedule-table thead th {
-      background: #002060;       /* app blue */
+      background: #002060;
       color: #ffffff;
-      font-weight: 600;          /* normal case (no uppercase transform) */
+      font-weight: 600;
       padding: 6px 8px;
       border-bottom: 1px solid #c9d8ff;
       text-align: left;
@@ -791,17 +791,19 @@ if tab_choice == "📊 Team Dashboards":
     /* Column sizing + alignment */
     .schedule-table thead th:nth-child(1),
     .schedule-table tbody td:nth-child(1) { /* Game */
-      width: 64px; white-space: nowrap;
+      width: 64px; white-space: nowrap; text-align: center;
+    }
+    .schedule-table thead th:nth-child(2),
+    .schedule-table tbody td:nth-child(2) { /* Opponent */
+      width: 100%;                  /* let Opponent flex wider */
     }
     .schedule-table thead th:nth-child(3),
     .schedule-table tbody td:nth-child(3) { /* Spread */
-      width: 84px; white-space: nowrap;
-      text-align: center;
+      width: 84px; white-space: nowrap; text-align: center;
     }
     .schedule-table thead th:nth-child(4),
     .schedule-table tbody td:nth-child(4) { /* Win Prob */
-      width: 140px; white-space: nowrap;
-      text-align: center;
+      width: 110px; white-space: nowrap; text-align: center;
     }
     
     /* Win Prob cell: percent above pill bar */
@@ -810,13 +812,13 @@ if tab_choice == "📊 Team Dashboards":
     .wp-track {
       width: 100%;
       height: 10px;
-      background: #e7eefb;          /* light track */
+      background: #e7eefb;
       border-radius: 9999px;
       overflow: hidden;
     }
     .wp-fill {
       height: 100%;
-      background: #1f6fe5;          /* blue fill */
+      background: #1f6fe5;
       border-radius: 9999px;
     }
     </style>
@@ -850,7 +852,6 @@ if tab_choice == "📊 Team Dashboards":
         if "Spread" in df.columns:
             df["Spread"] = df["Spread"].astype(str)
     
-        # Render as static HTML table with our CSS
         html = df.to_html(escape=False, index=False, classes="schedule-table")
         st.markdown(html, unsafe_allow_html=True)
 
