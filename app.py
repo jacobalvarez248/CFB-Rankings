@@ -762,96 +762,99 @@ if tab_choice == "📊 Team Dashboards":
     
     st.markdown("#### Schedule")
 
-    # --- CSS: full-width, no side scroll, compact text, specific column widths ---
+    # ---------- CSS (compact text, blue headers w/ normal case, pill progress bars) ----------
     st.markdown("""
     <style>
+    /* Keep page from side-scrolling and make the table fill its container */
     .block-container { overflow-x: hidden !important; }
-    
-    /* Make static table fill width and wrap instead of scrolling */
-    [data-testid="stTable"] table {
+    .schedule-table {
       table-layout: fixed;
       width: 100% !important;
-    }
-    
-    /* Wrap cells and use compact font size */
-    [data-testid="stTable"] table th,
-    [data-testid="stTable"] table td {
-      white-space: normal !important;
-      word-break: break-word !important;
-      font-size: 13px;               /* shrink text a bit */
+      border-collapse: collapse;
+      font-size: 13px;           /* shrink text a bit */
       line-height: 1.25;
-      padding: 6px 8px !important;
+    }
+    .schedule-table thead th {
+      background: #002060;       /* app blue */
+      color: #ffffff;
+      font-weight: 600;          /* no text-transform -> normal case */
+      padding: 6px 8px;
+      border-bottom: 1px solid #c9d8ff;
+      text-align: left;
+    }
+    .schedule-table tbody td {
+      padding: 6px 8px;
+      vertical-align: top;
+      word-break: break-word;
     }
     
-    /* Header style (app blue) */
-    [data-testid="stTable"] table thead th {
-      background-color: #002060 !important;
-      color: #ffffff !important;
-      font-weight: 600 !important;
-      text-transform: uppercase;
-      border-bottom: 1px solid #c9d8ff !important;
+    /* Column sizing (adjust if your order differs) */
+    .schedule-table thead th:nth-child(1),
+    .schedule-table tbody td:nth-child(1) { /* Game */
+      width: 64px; white-space: nowrap;
+    }
+    .schedule-table thead th:nth-child(3),
+    .schedule-table tbody td:nth-child(3) { /* Spread */
+      width: 84px; white-space: nowrap;
+    }
+    .schedule-table thead th:nth-child(4),
+    .schedule-table tbody td:nth-child(4) { /* Win Prob */
+      width: 140px; white-space: nowrap;
     }
     
-    /* Keep small numeric columns compact; Opponent gets the flex */
-    [data-testid="stTable"] table th:nth-child(1),
-    [data-testid="stTable"] table td:nth-child(1) { /* Game */
-      width: 64px; white-space: nowrap !important;
+    /* Win Prob cell: percent text above a rounded bar */
+    .wp-cell { display: flex; flex-direction: column; gap: 4px; }
+    .wp-pct  { font-weight: 600; }  /* small, bold percent like your screenshot */
+    .wp-track {
+      width: 100%;
+      height: 10px;                 /* pill height */
+      background: #e7eefb;          /* light track */
+      border-radius: 9999px;
+      overflow: hidden;
     }
-    [data-testid="stTable"] table th:nth-child(3),
-    [data-testid="stTable"] table td:nth-child(3) { /* Spread */
-      width: 84px; white-space: nowrap !important;
-    }
-    [data-testid="stTable"] table th:nth-child(4),
-    [data-testid="stTable"] table td:nth-child(4) { /* Win Prob */
-      width: 120px; white-space: nowrap !important;
-      text-align: center !important;           /* center the cell content */
+    .wp-fill {
+      height: 100%;
+      background: #1f6fe5;          /* blue fill */
+      border-radius: 9999px;         /* keep pill ends rounded */
     }
     </style>
     """, unsafe_allow_html=True)
     
-    # Build schedule frame for the selected team (assumes _team_schedule_df exists)
+    # ---------- Data prep + HTML rendering ----------
     sched_df = _team_schedule_df(selected_team)
     
     if sched_df.empty:
         st.info("No schedule rows found for this team on the **Schedule** sheet.")
     else:
-        # Work on a copy; keep Win Prob numeric 0–100 so bars can render, then format as %
-        _df = sched_df.copy()
+        df = sched_df.copy()
     
-        if "Game" in _df.columns:
-            _df["Game"] = _df["Game"].astype("int64")
+        # Types / formatting
+        if "Game" in df.columns:
+            df["Game"] = df["Game"].astype("int64")
     
-        if "Win Prob" in _df.columns:
-            # Normalize to 0–100 numeric (not string) for data bars
-            wp = _df["Win Prob"].astype(float)
-            _df["Win Prob"] = wp * 100 if wp.max() <= 1.0 else wp
+        # Normalize Win Prob to 0–100 numeric
+        if "Win Prob" in df.columns:
+            wp = df["Win Prob"].astype(float)
+            df["Win Prob"] = (wp * 100) if wp.max() <= 1.0 else wp
     
-        if "Spread" in _df.columns:
-            _df["Spread"] = _df["Spread"].astype(str)
+            # Build pill-style HTML for each Win Prob cell
+            def _wp_cell(x):
+                pct = f"{x:.1f}%"
+                return f'''
+                <div class="wp-cell">
+                  <div class="wp-pct">{pct}</div>
+                  <div class="wp-track"><div class="wp-fill" style="width:{x:.1f}%"></div></div>
+                </div>'''
+            df["Win Prob"] = df["Win Prob"].map(_wp_cell)
     
-        # Build a Styler:
-        # - hide index (removes far-left index column)
-        # - format Win Prob as percent string
-        # - center Win Prob text
-        # - add blue data bars to Win Prob
-        styled = (
-            _df.style
-              .hide(axis="index")
-              .format({"Win Prob": "{:.1f}%"})
-              .set_properties(subset=["Win Prob"], **{"text-align": "center"})
-              .bar(subset=["Win Prob"], color="#5B8EF1", vmin=0, vmax=100)  # data bars
-              .set_table_styles([
-                  # Ensure header text is centered to match the column alignment
-                  {"selector": "th.col_heading", "props": [("text-align", "center")]},
-                  # Let Opponent be left-aligned for readability
-              ])
-        )
+        # Ensure Spread is a short string
+        if "Spread" in df.columns:
+            df["Spread"] = df["Spread"].astype(str)
     
-        # Render as static HTML (no internal scrollbars)
-        try:
-            st.table(styled, use_container_width=True)
-        except TypeError:
-            st.table(styled)
+        # Convert to HTML (no index) with our class so CSS applies
+        html = df.to_html(escape=False, index=False, classes="schedule-table")
+        st.markdown(html, unsafe_allow_html=True)
+    
 
 # ----------------------------------------------------- COMPARISON TAB ------------------------------------------------
 if tab_choice == "🤝 Comparison":
