@@ -980,23 +980,18 @@ if tab_choice == "🤝 Comparison":
     team_frame = build_team_frame(df, metrics_df, logos_df)
     all_teams = sorted(team_frame['Team'].tolist())
 
-    # ---- Defaults from URL/session (if present), else your existing fallbacks ----
-    # Home default: comp_home > selected_team (if valid) > first team
+    # ---- Defaults from URL/session ----
     h_default = (
         st.session_state.get("comp_home")
         or (st.session_state.get("selected_team") if st.session_state.get("selected_team") in all_teams else None)
         or all_teams[0]
     )
-
-    # Away default: comp_away > first team that's not home
-    # (handles edge case if comp_away == h_default)
     a_default = st.session_state.get("comp_away")
     if not a_default or a_default not in all_teams or a_default == h_default:
         a_default = next(t for t in all_teams if t != h_default)
-
     neutral_default = st.session_state.get("comp_neutral", False)
 
-    # ---- Controls (now honoring defaults from URL/session) ----
+    # ---- Controls ----
     csel1, csel2, csel3 = st.columns([2, 2, 1])
     with csel1:
         home_team = st.selectbox("Home Team", all_teams, index=all_teams.index(h_default))
@@ -1005,21 +1000,18 @@ if tab_choice == "🤝 Comparison":
     with csel3:
         neutral = st.checkbox("Neutral site?", value=neutral_default)
 
-    # Keep URL in sync when user changes the controls manually
+    # Sync URL/session
     st.query_params.update({
         "view": "comparison",
         "home": home_team,
         "away": away_team,
         "neutral": "1" if neutral else "0",
     })
-
-    # Also update session_state so subsequent navigations pick up latest choices
     st.session_state["comp_home"] = home_team
     st.session_state["comp_away"] = away_team
     st.session_state["comp_neutral"] = neutral
 
-
-    # --- SIDE-BY-SIDE TEAM CARDS (always fit) + SCORE BELOW ---
+    # --- SIDE-BY-SIDE TEAM CARDS + SCORE ---
     th = team_frame.set_index('Team').loc[home_team]
     ta = team_frame.set_index('Team').loc[away_team]
     total, home_score, away_score = projected_score(team_frame, home_team, away_team, neutral)
@@ -1027,8 +1019,7 @@ if tab_choice == "🤝 Comparison":
     home_logo = th['Logo'] or ""
     away_logo = ta['Logo'] or ""
 
-    from urllib.parse import quote  # already imported near the top
-
+    from urllib.parse import quote
     def team_html(team, logo, pwr, off, deff):
         href = f'?selected_team={quote(team)}#📊%20Team%20Dashboards'
         return f"""
@@ -1044,7 +1035,6 @@ if tab_choice == "🤝 Comparison":
             <div class="badges"><span class="badge">Def</span><span class="val">{deff}</span></div>
           </div>
         """
-
 
     home_html = team_html(home_team, home_logo, th['Pwr Rank'], th['Off Rank'], th['Def Rank'])
     away_html = team_html(away_team, away_logo, ta['Pwr Rank'], ta['Off Rank'], ta['Def Rank'])
@@ -1089,9 +1079,10 @@ if tab_choice == "🤝 Comparison":
           }}
           .team-logo {{
             width: 64px; height: 64px; object-fit: contain; margin-bottom: 4px;
+            cursor: pointer;
           }}
           .team-name {{
-            margin: 0; font-size: 14px; text-align: center; line-height: 1.15;
+            margin: 0; font-size: 16px; text-align: center; line-height: 1.15;
             display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
             max-width: 200px;
           }}
@@ -1116,15 +1107,14 @@ if tab_choice == "🤝 Comparison":
           .score-label {{ font-size:12px; color:#444; }}
           .score-main  {{ font-size: 30px; font-weight: 700; }}
           .score-sub   {{ font-size: 11px; color: #666; }}
+          .dash-link {{ color: inherit; text-decoration: none; }}
+          .dash-link:hover {{ text-decoration: underline; }}
           @media (max-width: 480px) {{
             .team-card {{ grid-template-rows: 100px 26px 26px 26px; }}
             .team-logo {{ width: 50px; height: 50px; }}
             .team-name {{ font-size: 14px; }}
             .score-main {{ font-size: 24px; }}
           }}
-          .dash-link { color: inherit; text-decoration: none; }
-          .dash-link:hover { text-decoration: underline; }
-          .team-logo { cursor: pointer; }
         </style>
         """,
         unsafe_allow_html=True
@@ -1135,7 +1125,6 @@ if tab_choice == "🤝 Comparison":
     # Two match-up tables
     home_ball_df, away_ball_df = build_rank_tables(team_frame, home_team, away_team)
 
-    # Scoped CSS only for comparison tables
     st.markdown("""
     <style>
     .comparison-table table th,
@@ -1163,21 +1152,17 @@ if tab_choice == "🤝 Comparison":
         unsafe_allow_html=True
     )
 
-    # Small legend
+    # Legend
     st.markdown("""
     <div style="font-size:11px;color:#555;margin-top:.5rem">
       <b>Color scale:</b> rank #1 darkest blue across all teams; higher rank numbers lighter<br>
-      <b>Parity:</b> 5 smallest |Δ Rank| across both tables highlighted light blue<br>
-      <b>Advantage:</b> 5 largest |Δ Rank| across both tables highlighted light orange<br>
-      <b>Expected Points (EP):</b> Each yardline is assigned a point value and measures the number of points that would be expected to be scored based on down, distance, and field position<br>
-      <b>Expected Points Added (EPA):</b> Takes the EP from before a play and subtracts it from the EP after the play<br>
-      <b>Explosiveness:</b> Measures the average EPA on plays which were marked as successful<br>
-      <b>Success Rate:</b> Determines the success of a play. Successful plays meet one of the following criteria: <br>
-      1st downs which gain at least 50% of the yards to go <br>
-      2nd downs which gain at least 70% of the yards go <br>
-      3rd and 4th downs which gain at least 100% of the yards to go<br>
-      <b>Scoring Opportunity:</b> All offensive drives that cross the opponent's 40-yard line
-      
+      <b>Parity:</b> 5 smallest |Δ Rank| highlighted light blue<br>
+      <b>Advantage:</b> 5 largest |Δ Rank| highlighted light orange<br>
+      <b>EPA:</b> Expected Points Added; EP after play minus EP before play<br>
+      <b>Explosiveness:</b> Avg EPA on successful plays<br>
+      <b>Success Rate:</b> 1st downs ≥50%, 2nd downs ≥70%, 3rd/4th downs ≥100%<br>
+      <b>Scoring Opportunity:</b> Drives crossing opponent's 40
     </div>
     """, unsafe_allow_html=True)
+
 
