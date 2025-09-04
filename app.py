@@ -732,27 +732,28 @@ if tab_choice == "📊 Team Dashboards":
         opp_col    = _pick(sch, 'Opponent', 'Opp')
         spread_col = _pick(sch, 'Spread')
         wp_col     = _pick(sch, 'Win Prob', 'Win Probability', 'WP')
-        rk_col = _pick(sch, 'Opponent Ranking', 'Opp Rk', 'Opp Rank')
-
+        rk_col     = _pick(sch, 'Opponent Ranking', 'Opp Rk', 'Opp Rank', 'Rk.')
+    
         s = sch[sch[team_col].astype(str) == team_name].copy()
     
         # ---- Location helpers ----
         def _is_neutral(loc_raw: str) -> bool:
             t = (str(loc_raw) or '').strip().lower()
-            return t.startswith('neutral')  # adapt if you have a specific value
+            return t.startswith('neutral')  # adjust if you use a specific neutral token
+    
         def _is_away(loc_raw: str) -> bool:
             t = (str(loc_raw) or '').strip().lower()
             return t in ('@', 'at', 'away')
-        
+    
         s['Away'] = s[loc_col].apply(_is_away)
-
+    
         def _loc_prefix(loc_raw: str) -> str:
             t = (str(loc_raw) or '').strip().lower()
             if t.startswith('neutral'):
-                return 'vs'            # display
+                return 'vs'    # display
             if t in ('@', 'at', 'away'):
                 return 'at'
-            return 'vs'                # home/unknown → 'vs'
+            return 'vs'       # home/unknown → 'vs'
     
         s['Opp Name'] = s[opp_col].astype(str).str.strip()
         s['Neutral']  = s[loc_col].apply(_is_neutral)
@@ -771,11 +772,9 @@ if tab_choice == "📊 Team Dashboards":
             except: return np.nan
     
         s['Win Prob'] = s[wp_col].apply(_to_prob_pct)
-        
-        # Keep a raw numeric (0–100) column for math before converting to HTML later
-        s['Win Prob Raw'] = s['Win Prob']
-
-        # ---- Spread formatting (your existing logic) ----
+        s['Win Prob Raw'] = s['Win Prob']  # keep a numeric copy for math/plots
+    
+        # ---- Spread formatting (invert to show from selected team’s perspective) ----
         def _round_half(v):
             fv = float(v); return round(fv * 2) / 2.0
     
@@ -797,17 +796,17 @@ if tab_choice == "📊 Team Dashboards":
     
         out = (
             s.rename(columns={game_col: 'Game'})
-             [['Game', 'Opponent', 'Spread', 'Win Prob', 'Win Prob Raw', 'Opp Name', 'Neutral', 'Away']]
+             [['Game', 'Opponent', rk_col, 'Spread', 'Win Prob', 'Win Prob Raw', 'Opp Name', 'Neutral', 'Away']]
+             .rename(columns={rk_col: 'Rk.'})
              .reset_index(drop=True)
         )
-
         return out
     
-        
+    
     sched_df = _team_schedule_df(selected_team)
     
     st.markdown("#### Schedule")
-
+    
     # ---------- CSS (compact text, blue headers, pill progress bars) ----------
     st.markdown("""
     <style>
@@ -834,40 +833,29 @@ if tab_choice == "📊 Team Dashboards":
       font-size: 13px;
     }
     
-    /* Column sizing + alignment */
+    /* Column sizing + alignment (with Rk.) */
     .schedule-table thead th:nth-child(1),
     .schedule-table tbody td:nth-child(1) { /* Game */
-      width: 50px;  /* was 64px */
-      white-space: nowrap;
-      text-align: center;
+      width: 50px; white-space: nowrap; text-align: center;
     }
-    
     .schedule-table thead th:nth-child(2),
     .schedule-table tbody td:nth-child(2) { /* Opponent */
-      width: 120px;  /* was 100% flex */
-      min-width: 120px; /* allow it to expand more */
+      width: 100%;  /* flex wider */
+      min-width: 220px;
     }
-    
     .schedule-table thead th:nth-child(3),
     .schedule-table tbody td:nth-child(3) { /* Rk. */
-      width: 40px;
-      white-space: nowrap;
-      text-align: center;
+      width: 52px; white-space: nowrap; text-align: center;
     }
-    
     .schedule-table thead th:nth-child(4),
     .schedule-table tbody td:nth-child(4) { /* Spread */
-      width: 64px;
-      white-space: nowrap;
-      text-align: center;
+      width: 84px; white-space: nowrap; text-align: center;
     }
-    
     .schedule-table thead th:nth-child(5),
     .schedule-table tbody td:nth-child(5) { /* Win Prob */
-      width: 95px;  /* was 110px */
-      white-space: nowrap;
-      text-align: center;
+      width: 95px; white-space: nowrap; text-align: center;
     }
+    
     /* Win Prob cell: percent above pill bar */
     .wp-cell { display: flex; flex-direction: column; gap: 4px; align-items: center; }
     .wp-pct  { font-weight: 600; font-size: 12px; }
@@ -890,7 +878,7 @@ if tab_choice == "📊 Team Dashboards":
       cursor: pointer;
     }
     .schedule-table a.sched-link:hover {
-      text-decoration: underline; /* or remove this line if you want zero hover styling */
+      text-decoration: underline;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -919,17 +907,13 @@ if tab_choice == "📊 Team Dashboards":
                     f'</div>'
                 )
             df["Win Prob"] = df["Win Prob"].map(_wp_cell)
-
-        # Hide helper cols in the visible table:
-        render_cols = [c for c in ["Game","Opponent","Rk.","Spread","Win Prob"] if c in df.columns]
-        df = df[render_cols]
-
     
         if "Spread" in df.columns:
             df["Spread"] = df["Spread"].astype(str)
-        
+    
         from urllib.parse import urlencode, quote
-
+    
+        # 👉 inject comparison-tab links BEFORE filtering columns
         if "Opponent" in df.columns and {"Opp Name","Neutral","Away"}.issubset(df.columns):
             def _opp_link_row(row):
                 is_away = bool(row["Away"])
@@ -942,61 +926,51 @@ if tab_choice == "📊 Team Dashboards":
                     "neutral": "1" if bool(row["Neutral"]) else "0",
                 }, quote_via=quote)
                 return f'<a class="sched-link" href="?{qs}">{row["Opponent"]}</a>'
-        
+    
             df["Opponent"] = df.apply(_opp_link_row, axis=1)
-        
-        # Hide helper cols
-        render_cols = [c for c in ["Game", "Opponent", "Rk.", "Spread", "Win Prob"] if c in df.columns]
+    
+        # 👉 only visible columns; keep Rk., hide helpers/Win Prob Raw
+        render_cols = [c for c in ["Game","Opponent","Rk.","Spread","Win Prob"] if c in df.columns]
         df = df[render_cols]
-
+    
         html = df.to_html(escape=False, index=False, classes="schedule-table")
         st.markdown(html, unsafe_allow_html=True)
     
-    #-------------------------WIN PROBABILITY DISTRIBUTION----------------------------------
-    import numpy as np
-    import matplotlib.pyplot as plt
+        # ---------- Win-total distribution chart (Poisson–binomial over per-game p) ----------
+        import numpy as np
+        import matplotlib.pyplot as plt
     
-    def win_total_distribution(win_probs_0_to_1):
-        """Return array P[0..N] where P[k] = Prob(exactly k wins)."""
-        # DP polynomial: start with 1.0 for 0 wins
-        dp = np.array([1.0], dtype=float)
-        for p in win_probs_0_to_1:
-            # convolve with [1-p, p]
-            dp = np.convolve(dp, np.array([1.0 - p, p], dtype=float))
-        return dp  # length N+1
+        def win_total_distribution(win_probs_0_to_1):
+            dp = np.array([1.0], dtype=float)  # P(0 wins) = 1 at start
+            for p in win_probs_0_to_1:
+                dp = np.convolve(dp, np.array([1.0 - p, p], dtype=float))
+            return dp  # length N+1
     
-    # Pull raw probs from the same schedule df (0–100) and convert to 0–1
-    wp_series = sched_df.get("Win Prob Raw")
-    if wp_series is not None and not wp_series.dropna().empty:
-        p = (wp_series.astype(float) / 100.0).clip(0, 1).to_list()
-        dist = win_total_distribution(p)  # np.array, len = number_of_games+1
+        wp_series = sched_df.get("Win Prob Raw")
+        if wp_series is not None and not wp_series.dropna().empty:
+            p = (wp_series.astype(float) / 100.0).clip(0, 1).to_list()
+            dist = win_total_distribution(p)
+            x = np.arange(len(dist))
+            pct = dist * 100.0
     
-        # ---- Plot to match your example vibe ----
-        x = np.arange(len(dist))
-        pct = dist * 100.0
+            fig, ax = plt.subplots(figsize=(6.0, 4.0), dpi=150)
+            bars = ax.bar(x, pct, edgecolor='black')
+            for rect, val in zip(bars, pct):
+                if val >= 0.25:
+                    ax.text(rect.get_x() + rect.get_width()/2.0, rect.get_height() + 0.5,
+                            f"{val:.1f}%", ha='center', va='bottom', fontsize=8)
     
-        fig, ax = plt.subplots(figsize=(6.0, 4.0), dpi=150)
-        bars = ax.bar(x, pct, edgecolor='black')
-    
-        # Labels above bars
-        for rect, val in zip(bars, pct):
-            if val >= 0.25:  # skip tiny labels
-                ax.text(rect.get_x() + rect.get_width()/2.0, rect.get_height() + 0.5,
-                        f"{val:.1f}%", ha='center', va='bottom', fontsize=8)
-    
-        ax.set_title("Win Probability Distribution")
-        ax.set_xlabel("Wins after 12 games")
-        ax.set_ylabel("Probability")
-        ax.set_xticks(x)
-        ax.set_ylim(0, max(12, pct.max() + 5))
-    
-        # Light gradient-style background (simple stripes)
-        ax.set_facecolor("#eef4ff")
-        fig.patch.set_facecolor("white")
-    
-        st.pyplot(fig)
-    else:
-        st.info("No numeric win probabilities available for this team.")
+            ax.set_title("Win Probability Distribution")
+            ax.set_xlabel(f"Wins after {len(p)} games")
+            ax.set_ylabel("Probability")
+            ax.set_xticks(x)
+            ax.set_ylim(0, max(12, pct.max() + 5))
+            ax.set_facecolor("#eef4ff")
+            fig.patch.set_facecolor("white")
+            st.pyplot(fig)
+        else:
+            st.info("No numeric win probabilities available for this team.")
+
 
 # ----------------------------------------------------- COMPARISON TAB ------------------------------------------------
 if tab_choice == "🤝 Comparison":
