@@ -608,7 +608,6 @@ if tab_choice == "📈 Metrics":
     st.markdown(f'<div class="metrics-table-wrapper">{html_table}</div>', unsafe_allow_html=True)
 
 #---------------------------------------------------------Team Dashboards--------------------------------------------------------
-#---------------------------------------------------------Team Dashboards--------------------------------------------------------
 if tab_choice == "📊 Team Dashboards":
     st.markdown("## 📊 Team Dashboards")
 
@@ -671,6 +670,117 @@ if tab_choice == "📊 Team Dashboards":
 
     # (Optional) faint divider
     st.markdown("<hr style='opacity:.2;'>", unsafe_allow_html=True)
+
+    # -------------------------- Team Schedule (Expected look & feel) --------------------------
+    @st.cache_data
+    def _team_schedule_df(team_name: str):
+        # Read & normalize
+        sch = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Schedule', header=1)
+        sch.columns = [str(c).strip() for c in sch.columns]
+    
+        def _pick(df, *cands):
+            lower = {c.lower(): c for c in df.columns}
+            for c in cands:
+                if c.lower() in lower:
+                    return lower[c.lower()]
+            raise KeyError(f"Missing expected column; looked for {cands}")
+    
+        team_col    = _pick(sch, 'Team', 'Team Name')
+        game_col    = _pick(sch, 'Game')
+        loc_col     = _pick(sch, 'Location', 'Loc')
+        opp_col     = _pick(sch, 'Opponent', 'Opp')
+        spread_col  = _pick(sch, 'Spread')
+        wp_col      = _pick(sch, 'Win Prob', 'Win Probability', 'WP')
+    
+        s = sch[sch[team_col].astype(str) == team_name].copy()
+    
+        # Opponent = "Location Opponent" (trim extra spaces)
+        s['Opponent'] = (s[loc_col].fillna('').astype(str).str.strip() + ' ' +
+                         s[opp_col].fillna('').astype(str).str.strip()).str.strip()
+    
+        # Win Prob -> 0..1 float
+        def _to_prob(x):
+            if pd.isna(x): return np.nan
+            if isinstance(x, str):
+                xs = x.strip().replace('%', '')
+                try:
+                    v = float(xs)
+                    return v/100 if v > 1 else v
+                except:
+                    return np.nan
+            try:
+                v = float(x)
+                return v/100 if v > 1 else v
+            except:
+                return np.nan
+    
+        s['Win Prob'] = s[wp_col].apply(_to_prob)
+    
+        # Spread: keep WIN/LOSS text; numeric -> round to nearest 0.5 and one decimal
+        def _round_half(x):
+            try:
+                v = float(x)
+                return round(v * 2) / 2.0
+            except:
+                return x  # leave text like "WIN"/"LOSS" as-is
+    
+        def _spread_display(x):
+            if pd.isna(x): 
+                return ""
+            # text (WIN/LOSS) — pass through
+            if isinstance(x, str):
+                return x.strip()
+            # numeric — show .0 or .5
+            return f"{_round_half(x):.1f}"
+    
+        s['Spread'] = s[spread_col].apply(_round_half)
+        # Build display frame
+        out = s.rename(columns={game_col: 'Game'})[['Game', 'Opponent', 'Spread', 'Win Prob']].reset_index(drop=True)
+    
+        # Keep a text view for the styler format (so WIN/LOSS show as text, numerics show with one decimal)
+        out['Spread_display'] = s[spread_col].apply(_spread_display)
+    
+        return out
+    
+    sched_df = _team_schedule_df(selected_team)
+    
+    st.markdown("#### Schedule")
+    
+    if sched_df.empty:
+        st.info("No schedule rows found for this team on the **Schedule** sheet.")
+    else:
+        # Build a Styler that:
+        # 1) shows Spread as text (WIN/LOSS) or one-decimal (rounded to .0/.5)
+        # 2) colors WIN (green) and LOSS (red)
+        # 3) adds data bars to Win Prob and formats as %
+        df_show = sched_df[['Game', 'Opponent', 'Spread_display', 'Win Prob']].rename(
+            columns={'Spread_display': 'Spread'}
+        )
+    
+        def color_spread(col: pd.Series):
+            styles = []
+            for v in col.astype(str).str.upper():
+                if 'WIN' in v:
+                    styles.append('background-color:#e8f6ee; color:#0f7b3e; font-weight:600;')
+                elif 'LOSS' in v or 'LOSE' in v:
+                    styles.append('background-color:#fde8e7; color:#b42318; font-weight:600;')
+                else:
+                    styles.append('')
+            return styles
+    
+        styled = (
+            df_show.style
+            .format({
+                'Spread': lambda x: x,        # already string-formatted (WIN/LOSS or one-decimal)
+                'Win Prob': '{:.0%}',
+            })
+            .apply(color_spread, subset=['Spread'])
+            .bar(subset=['Win Prob'], align='left')  # Streamlit renders as data bars in the cell
+            .hide(axis='index')
+        )
+    
+        st.dataframe(styled, use_container_width=True)
+
 
 # ----------------------------------------------------- COMPARISON TAB ------------------------------------------------
 if tab_choice == "🤝 Comparison":
