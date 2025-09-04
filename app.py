@@ -732,7 +732,8 @@ if tab_choice == "📊 Team Dashboards":
         opp_col    = _pick(sch, 'Opponent', 'Opp')
         spread_col = _pick(sch, 'Spread')
         wp_col     = _pick(sch, 'Win Prob', 'Win Probability', 'WP')
-    
+        rk_col = _pick(sch, 'Opponent Ranking', 'Opp Rk', 'Opp Rank')
+
         s = sch[sch[team_col].astype(str) == team_name].copy()
     
         # ---- Location helpers ----
@@ -792,10 +793,12 @@ if tab_choice == "📊 Team Dashboards":
         s['Spread'] = s[spread_col].apply(_invert_and_format)
     
         out = (
-            s.rename(columns={game_col: 'Game'})
-             [['Game', 'Opponent', 'Spread', 'Win Prob', 'Opp Name', 'Neutral', 'Away']]
-             .reset_index(drop=True)
-        )
+        s.rename(columns={game_col: 'Game'})
+         [[ 'Game', 'Opponent', rk_col, 'Spread', 'Win Prob', 'Opp Name', 'Neutral', 'Away' ]]
+         .rename(columns={rk_col: 'Rk.'})
+         .reset_index(drop=True)
+    )
+
         return out
     
         
@@ -921,9 +924,8 @@ if tab_choice == "📊 Team Dashboards":
             df["Opponent"] = df.apply(_opp_link_row, axis=1)
         
         # Hide helper cols
-        render_cols = [c for c in ["Game","Opponent","Spread","Win Prob"] if c in df.columns]
+        render_cols = [c for c in ["Game", "Opponent", "Rk.", "Spread", "Win Prob"] if c in df.columns]
         df = df[render_cols]
-
 
         html = df.to_html(escape=False, index=False, classes="schedule-table")
         st.markdown(html, unsafe_allow_html=True)
