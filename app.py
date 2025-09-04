@@ -848,14 +848,14 @@ if tab_choice == "📊 Team Dashboards":
     
     .schedule-table thead th:nth-child(3),
     .schedule-table tbody td:nth-child(3) { /* Rk. */
-      width: 52px;
+      width: 40px;
       white-space: nowrap;
       text-align: center;
     }
     
     .schedule-table thead th:nth-child(4),
     .schedule-table tbody td:nth-child(4) { /* Spread */
-      width: 84px;
+      width: 64px;
       white-space: nowrap;
       text-align: center;
     }
