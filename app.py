@@ -771,7 +771,10 @@ if tab_choice == "📊 Team Dashboards":
             except: return np.nan
     
         s['Win Prob'] = s[wp_col].apply(_to_prob_pct)
-    
+        
+        # Keep a raw numeric (0–100) column for math before converting to HTML later
+        s['Win Prob Raw'] = s['Win Prob']
+
         # ---- Spread formatting (your existing logic) ----
         def _round_half(v):
             fv = float(v); return round(fv * 2) / 2.0
@@ -793,11 +796,10 @@ if tab_choice == "📊 Team Dashboards":
         s['Spread'] = s[spread_col].apply(_invert_and_format)
     
         out = (
-        s.rename(columns={game_col: 'Game'})
-         [[ 'Game', 'Opponent', rk_col, 'Spread', 'Win Prob', 'Opp Name', 'Neutral', 'Away' ]]
-         .rename(columns={rk_col: 'Rk.'})
-         .reset_index(drop=True)
-    )
+            s.rename(columns={game_col: 'Game'})
+             [['Game', 'Opponent', 'Spread', 'Win Prob', 'Win Prob Raw', 'Opp Name', 'Neutral', 'Away']]
+             .reset_index(drop=True)
+        )
 
         return out
     
@@ -917,6 +919,11 @@ if tab_choice == "📊 Team Dashboards":
                     f'</div>'
                 )
             df["Win Prob"] = df["Win Prob"].map(_wp_cell)
+
+        # Hide helper cols in the visible table:
+        render_cols = [c for c in ["Game","Opponent","Rk.","Spread","Win Prob"] if c in df.columns]
+        df = df[render_cols]
+
     
         if "Spread" in df.columns:
             df["Spread"] = df["Spread"].astype(str)
@@ -945,6 +952,52 @@ if tab_choice == "📊 Team Dashboards":
 
         html = df.to_html(escape=False, index=False, classes="schedule-table")
         st.markdown(html, unsafe_allow_html=True)
+    
+    #-------------------------WIN PROBABILITY DISTRIBUTION----------------------------------
+    import numpy as np
+    import matplotlib.pyplot as plt
+    
+    def win_total_distribution(win_probs_0_to_1):
+        """Return array P[0..N] where P[k] = Prob(exactly k wins)."""
+        # DP polynomial: start with 1.0 for 0 wins
+        dp = np.array([1.0], dtype=float)
+        for p in win_probs_0_to_1:
+            # convolve with [1-p, p]
+            dp = np.convolve(dp, np.array([1.0 - p, p], dtype=float))
+        return dp  # length N+1
+    
+    # Pull raw probs from the same schedule df (0–100) and convert to 0–1
+    wp_series = sched_df.get("Win Prob Raw")
+    if wp_series is not None and not wp_series.dropna().empty:
+        p = (wp_series.astype(float) / 100.0).clip(0, 1).to_list()
+        dist = win_total_distribution(p)  # np.array, len = number_of_games+1
+    
+        # ---- Plot to match your example vibe ----
+        x = np.arange(len(dist))
+        pct = dist * 100.0
+    
+        fig, ax = plt.subplots(figsize=(6.0, 4.0), dpi=150)
+        bars = ax.bar(x, pct, edgecolor='black')
+    
+        # Labels above bars
+        for rect, val in zip(bars, pct):
+            if val >= 0.25:  # skip tiny labels
+                ax.text(rect.get_x() + rect.get_width()/2.0, rect.get_height() + 0.5,
+                        f"{val:.1f}%", ha='center', va='bottom', fontsize=8)
+    
+        ax.set_title("Win Probability Distribution")
+        ax.set_xlabel("Wins after 12 games")
+        ax.set_ylabel("Probability")
+        ax.set_xticks(x)
+        ax.set_ylim(0, max(12, pct.max() + 5))
+    
+        # Light gradient-style background (simple stripes)
+        ax.set_facecolor("#eef4ff")
+        fig.patch.set_facecolor("white")
+    
+        st.pyplot(fig)
+    else:
+        st.info("No numeric win probabilities available for this team.")
 
 # ----------------------------------------------------- COMPARISON TAB ------------------------------------------------
 if tab_choice == "🤝 Comparison":
