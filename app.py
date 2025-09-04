@@ -1085,7 +1085,7 @@ if tab_choice == "🤝 Comparison":
             width: 64px; height: 64px; object-fit: contain; margin-bottom: 4px;
           }}
           .team-name {{
-            margin: 0; font-size: 16px; text-align: center; line-height: 1.15;
+            margin: 0; font-size: 14px; text-align: center; line-height: 1.15;
             display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
             max-width: 200px;
           }}
