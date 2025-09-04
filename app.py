@@ -675,7 +675,7 @@ if tab_choice == "📊 Team Dashboards":
     @st.cache_data
     def _team_schedule_df(team_name: str):
         # Read & normalize
-        sch = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Schedule', header=1)
+        sch = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Schedule', header=0)
         sch.columns = [str(c).strip() for c in sch.columns]
     
         def _pick(df, *cands):
