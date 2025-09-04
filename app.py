@@ -788,7 +788,9 @@ if tab_choice == "📊 Team Dashboards":
     
     /* 4) Let Opponent wrap if you prefer no truncation; if so, swap to 'normal' */
     [data-testid="stDataFrame"] [data-testid="column-Opponent"] [role="gridcell"] {
-      white-space: nowrap !important; /* change to 'normal' to wrap lines */
+      white-space: normal !important;   /* allow wrapping */
+    }
+
     }
     </style>
     """, unsafe_allow_html=True)
