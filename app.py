@@ -835,30 +835,37 @@ if tab_choice == "📊 Team Dashboards":
     /* Column sizing + alignment */
     .schedule-table thead th:nth-child(1),
     .schedule-table tbody td:nth-child(1) { /* Game */
-      width: 64px; white-space: nowrap; text-align: center;
+      width: 50px;  /* was 64px */
+      white-space: nowrap;
+      text-align: center;
     }
     
     .schedule-table thead th:nth-child(2),
     .schedule-table tbody td:nth-child(2) { /* Opponent */
-      width: 100%; /* let Opponent flex wider */
+      width: 140px;  /* was 100% flex */
+      min-width: 200px; /* allow it to expand more */
     }
     
     .schedule-table thead th:nth-child(3),
     .schedule-table tbody td:nth-child(3) { /* Rk. */
-      width: 52px; white-space: nowrap; text-align: center;
+      width: 52px;
+      white-space: nowrap;
+      text-align: center;
     }
     
     .schedule-table thead th:nth-child(4),
     .schedule-table tbody td:nth-child(4) { /* Spread */
-      width: 84px; white-space: nowrap; text-align: center;
+      width: 84px;
+      white-space: nowrap;
+      text-align: center;
     }
     
     .schedule-table thead th:nth-child(5),
     .schedule-table tbody td:nth-child(5) { /* Win Prob */
-      width: 110px; white-space: nowrap; text-align: center;
+      width: 95px;  /* was 110px */
+      white-space: nowrap;
+      text-align: center;
     }
-
-    
     /* Win Prob cell: percent above pill bar */
     .wp-cell { display: flex; flex-direction: column; gap: 4px; align-items: center; }
     .wp-pct  { font-weight: 600; font-size: 12px; }
