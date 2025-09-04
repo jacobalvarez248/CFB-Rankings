@@ -671,7 +671,7 @@ if tab_choice == "📊 Team Dashboards":
     # (Optional) faint divider
     st.markdown("<hr style='opacity:.2;'>", unsafe_allow_html=True)
 
-    # -------------------------- Team Schedule (blue bars, percent labels, inverted spread) --------------------------
+    # -------------------------- Team Schedule (blue headers, blue bars, % labels, inverted spread) --------------------------
     @st.cache_data
     def _team_schedule_df(team_name: str):
         sch = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Schedule', header=0)
@@ -697,7 +697,7 @@ if tab_choice == "📊 Team Dashboards":
         s['Opponent'] = (s[loc_col].fillna('').astype(str).str.strip() + ' ' +
                          s[opp_col].fillna('').astype(str).str.strip()).str.strip()
     
-        # Win Prob -> percent scale (0..100), keep as float for real data bars
+        # Win Prob -> percent scale (0..100) for proper bar lengths and labels like 84.7%
         def _to_prob_pct(x):
             if pd.isna(x): return np.nan
             if isinstance(x, str):
@@ -731,8 +731,10 @@ if tab_choice == "📊 Team Dashboards":
                 return '🔴 LOSS'
             try:
                 val = float(txt.replace('+',''))
-                val = -1.0 * _round_half(val)                 # invert
-                sign = '+' if val > 0 else ''                 # show + sign for positive
+                val = -1.0 * _round_half(val)           # invert
+                # handle -0.0 -> 0.0
+                if abs(val) < 0.05: val = 0.0
+                sign = '+' if val > 0 else ''           # explicit + for positives
                 return f"{sign}{val:.1f}"
             except:
                 return txt
@@ -750,13 +752,13 @@ if tab_choice == "📊 Team Dashboards":
     
     st.markdown("#### Schedule")
     
-    # OPTIONAL: make the dataframe headers blue to match the rest of your app
-    # (tweak these two hex values to your brand if needed)
+    # Make headers blue and progress bars use blue (via theme primary color)
     st.markdown("""
     <style>
+    :root { --primary-color: #3B82F6; }  /* app-wide primary (progress bars, accents) */
     [data-testid="stDataFrame"] thead tr th {
-      background-color: #e6f0ff;   /* light blue header bg */
-      color: #1f4ed8;              /* header text blue */
+      background-color: #e6f0ff;
+      color: #1f4ed8;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -772,13 +774,12 @@ if tab_choice == "📊 Team Dashboards":
                 "Game": st.column_config.NumberColumn("Game", format="%d"),
                 "Opponent": st.column_config.TextColumn("Opponent"),
                 "Spread": st.column_config.TextColumn("Spread"),
-                # Bars use 0..100 scale and display as percentages like 84.7%
+                # Bars use 0..100 scale, rendered in the app's primary color (set above)
                 "Win Prob": st.column_config.ProgressColumn(
                     "Win Prob",
                     min_value=0.0,
                     max_value=100.0,
                     format="%.1f%%",
-                    bar_color="#3B82F6",  # blue
                 ),
             },
         )
