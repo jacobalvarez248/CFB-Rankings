@@ -837,18 +837,27 @@ if tab_choice == "📊 Team Dashboards":
     .schedule-table tbody td:nth-child(1) { /* Game */
       width: 64px; white-space: nowrap; text-align: center;
     }
+    
     .schedule-table thead th:nth-child(2),
     .schedule-table tbody td:nth-child(2) { /* Opponent */
-      width: 100%;                  /* let Opponent flex wider */
+      width: 100%; /* let Opponent flex wider */
     }
+    
     .schedule-table thead th:nth-child(3),
-    .schedule-table tbody td:nth-child(3) { /* Spread */
+    .schedule-table tbody td:nth-child(3) { /* Rk. */
+      width: 52px; white-space: nowrap; text-align: center;
+    }
+    
+    .schedule-table thead th:nth-child(4),
+    .schedule-table tbody td:nth-child(4) { /* Spread */
       width: 84px; white-space: nowrap; text-align: center;
     }
-    .schedule-table thead th:nth-child(4),
-    .schedule-table tbody td:nth-child(4) { /* Win Prob */
+    
+    .schedule-table thead th:nth-child(5),
+    .schedule-table tbody td:nth-child(5) { /* Win Prob */
       width: 110px; white-space: nowrap; text-align: center;
     }
+
     
     /* Win Prob cell: percent above pill bar */
     .wp-cell { display: flex; flex-direction: column; gap: 4px; align-items: center; }
