@@ -762,40 +762,49 @@ if tab_choice == "📊 Team Dashboards":
     
     st.markdown("#### Schedule")
 
-    # --- Global CSS to keep things tidy and responsive ---
+    # --- CSS: full-width, no side scroll, compact text, specific column widths ---
     st.markdown("""
     <style>
-    /* Keep the page from showing horizontal scrollbars */
     .block-container { overflow-x: hidden !important; }
     
-    /* Make the schedule table fill width and never side-scroll */
+    /* Make static table fill width and wrap instead of scrolling */
     [data-testid="stTable"] table {
-      table-layout: fixed;   /* forces columns to respect widths and wrap */
+      table-layout: fixed;
       width: 100% !important;
     }
     
-    /* Wrap all cells so long text doesn't push width */
+    /* Wrap cells and use compact font size */
     [data-testid="stTable"] table th,
     [data-testid="stTable"] table td {
       white-space: normal !important;
       word-break: break-word !important;
+      font-size: 13px;               /* shrink text a bit */
+      line-height: 1.25;
+      padding: 6px 8px !important;
     }
     
-    /* Compact numeric columns by default */
+    /* Header style (app blue) */
+    [data-testid="stTable"] table thead th {
+      background-color: #002060 !important;
+      color: #ffffff !important;
+      font-weight: 600 !important;
+      text-transform: uppercase;
+      border-bottom: 1px solid #c9d8ff !important;
+    }
+    
+    /* Keep small numeric columns compact; Opponent gets the flex */
     [data-testid="stTable"] table th:nth-child(1),
-    [data-testid="stTable"] table td:nth-child(1) {  /* Game */
-      width: 72px;
-      white-space: nowrap !important;
+    [data-testid="stTable"] table td:nth-child(1) { /* Game */
+      width: 64px; white-space: nowrap !important;
     }
     [data-testid="stTable"] table th:nth-child(3),
-    [data-testid="stTable"] table td:nth-child(3) {  /* Spread */
-      width: 90px;
-      white-space: nowrap !important;
+    [data-testid="stTable"] table td:nth-child(3) { /* Spread */
+      width: 84px; white-space: nowrap !important;
     }
     [data-testid="stTable"] table th:nth-child(4),
-    [data-testid="stTable"] table td:nth-child(4) {  /* Win Prob */
-      width: 110px;
-      white-space: nowrap !important;
+    [data-testid="stTable"] table td:nth-child(4) { /* Win Prob */
+      width: 120px; white-space: nowrap !important;
+      text-align: center !important;           /* center the cell content */
     }
     </style>
     """, unsafe_allow_html=True)
@@ -806,42 +815,43 @@ if tab_choice == "📊 Team Dashboards":
     if sched_df.empty:
         st.info("No schedule rows found for this team on the **Schedule** sheet.")
     else:
-        # Format values for a clean, scroll-free static table
+        # Work on a copy; keep Win Prob numeric 0–100 so bars can render, then format as %
         _df = sched_df.copy()
+    
         if "Game" in _df.columns:
             _df["Game"] = _df["Game"].astype("int64")
+    
         if "Win Prob" in _df.columns:
-            _df["Win Prob"] = _df["Win Prob"].astype(float) * 100 if _df["Win Prob"].max() <= 1 else _df["Win Prob"]
-            _df["Win Prob"] = _df["Win Prob"].map(lambda x: f"{x:.1f}%")
+            # Normalize to 0–100 numeric (not string) for data bars
+            wp = _df["Win Prob"].astype(float)
+            _df["Win Prob"] = wp * 100 if wp.max() <= 1.0 else wp
+    
         if "Spread" in _df.columns:
-            # Ensure Spread is a short string so it doesn't wrap weirdly
             _df["Spread"] = _df["Spread"].astype(str)
     
-        # Style header to your app blue with white text; hide index; pad cells a bit
+        # Build a Styler:
+        # - hide index (removes far-left index column)
+        # - format Win Prob as percent string
+        # - center Win Prob text
+        # - add blue data bars to Win Prob
         styled = (
             _df.style
-            .hide(axis="index")
-            .set_table_styles([
-                {"selector": "th",
-                 "props": [("background-color", "#002060"),
-                           ("color", "#ffffff"),
-                           ("font-weight", "600"),
-                           ("text-transform", "uppercase"),
-                           ("border-bottom", "1px solid #c9d8ff"),
-                           ("padding", "6px 8px")]},
-                {"selector": "td",
-                 "props": [("padding", "6px 8px"),
-                           ("line-height", "1.2")]}
-            ])
+              .hide(axis="index")
+              .format({"Win Prob": "{:.1f}%"})
+              .set_properties(subset=["Win Prob"], **{"text-align": "center"})
+              .bar(subset=["Win Prob"], color="#5B8EF1", vmin=0, vmax=100)  # data bars
+              .set_table_styles([
+                  # Ensure header text is centered to match the column alignment
+                  {"selector": "th.col_heading", "props": [("text-align", "center")]},
+                  # Let Opponent be left-aligned for readability
+              ])
         )
     
-        # st.table renders the Styler as static HTML (no inner scrollbars)
-        # If your Streamlit version supports it, keep use_container_width=True; otherwise just call st.table(styled)
+        # Render as static HTML (no internal scrollbars)
         try:
             st.table(styled, use_container_width=True)
         except TypeError:
             st.table(styled)
-
 
 # ----------------------------------------------------- COMPARISON TAB ------------------------------------------------
 if tab_choice == "🤝 Comparison":
