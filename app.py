@@ -671,7 +671,7 @@ if tab_choice == "📊 Team Dashboards":
     # (Optional) faint divider
     st.markdown("<hr style='opacity:.2;'>", unsafe_allow_html=True)
 
-    # -------------------------- Team Schedule (blue headers, blue bars, % labels, inverted spread) --------------------------
+    # -------------------------- Team Schedule (no scroll, blue headers, neutral→vs) --------------------------
     @st.cache_data
     def _team_schedule_df(team_name: str):
         sch = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Schedule', header=0)
@@ -693,11 +693,22 @@ if tab_choice == "📊 Team Dashboards":
     
         s = sch[sch[team_col].astype(str) == team_name].copy()
     
-        # Opponent = "Location Opponent"
-        s['Opponent'] = (s[loc_col].fillna('').astype(str).str.strip() + ' ' +
-                         s[opp_col].fillna('').astype(str).str.strip()).str.strip()
+        # ---- Opponent: normalize location; "neutral" -> "vs" ----
+        def _loc_prefix(loc_raw: str) -> str:
+            t = (str(loc_raw) or '').strip().lower()
+            if t.startswith('neutral'):
+                return 'vs'
+            if t in ('@', 'at', 'away'):
+                return 'at'
+            # treat '', 'home', 'vs', 'v', etc. as home/neutral -> 'vs'
+            return 'vs'
     
-        # Win Prob -> percent scale (0..100) for proper bar lengths and labels like 84.7%
+        s['Opponent'] = s.apply(
+            lambda r: f"{_loc_prefix(r[loc_col])} {str(r[opp_col]).strip()}".strip(),
+            axis=1
+        )
+    
+        # ---- Win Prob: convert to 0..100 float for proper bars & labels ----
         def _to_prob_pct(x):
             if pd.isna(x): return np.nan
             if isinstance(x, str):
@@ -715,7 +726,7 @@ if tab_choice == "📊 Team Dashboards":
     
         s['Win Prob'] = s[wp_col].apply(_to_prob_pct)
     
-        # Spread: round to nearest .5, then invert sign; keep WIN/LOSS text
+        # ---- Spread: round to nearest .5, then invert sign; WIN/LOSS preserved ----
         def _round_half(v):
             fv = float(v)
             return round(fv * 2) / 2.0
@@ -731,11 +742,10 @@ if tab_choice == "📊 Team Dashboards":
                 return '🔴 LOSS'
             try:
                 val = float(txt.replace('+',''))
-                val = -1.0 * _round_half(val)           # invert
-                # handle -0.0 -> 0.0
-                if abs(val) < 0.05: val = 0.0
-                sign = '+' if val > 0 else ''           # explicit + for positives
-                return f"{sign}{val:.1f}"
+                val = -1.0 * _round_half(val)       # invert sign
+                if abs(val) < 0.05: val = 0.0       # kill -0.0
+                sign = '+' if val > 0 else ''
+                return f"{sign}{val:.1f}"           # always .0 or .5
             except:
                 return txt
     
@@ -752,34 +762,40 @@ if tab_choice == "📊 Team Dashboards":
     
     st.markdown("#### Schedule")
     
-    # Make headers blue and progress bars use blue (via theme primary color)
+    # Stronger CSS: blue headers; also prevent horizontal scroll by ensuring the inner container doesn't overflow
     st.markdown("""
     <style>
-    :root { --primary-color: #3B82F6; }  /* app-wide primary (progress bars, accents) */
+    /* Blue header background + text */
     [data-testid="stDataFrame"] thead tr th {
-      background-color: #e6f0ff;
-      color: #1f4ed8;
+      background-color: #e6f0ff !important;
     }
+    [data-testid="stDataFrame"] thead tr th * {
+      color: #1f4ed8 !important;
+      font-weight: 700 !important;
+    }
+    /* Make the table use all width and clip any accidental overflow */
+    [data-testid="stDataFrame"] { overflow-x: hidden !important; }
     </style>
     """, unsafe_allow_html=True)
     
     if sched_df.empty:
         st.info("No schedule rows found for this team on the **Schedule** sheet.")
     else:
+        # Fixed column widths so it fits (no side scrolling)
         st.dataframe(
             sched_df,
             use_container_width=True,
             hide_index=True,
             column_config={
-                "Game": st.column_config.NumberColumn("Game", format="%d"),
-                "Opponent": st.column_config.TextColumn("Opponent"),
-                "Spread": st.column_config.TextColumn("Spread"),
-                # Bars use 0..100 scale, rendered in the app's primary color (set above)
+                "Game": st.column_config.NumberColumn("Game", format="%d", width="small"),
+                "Opponent": st.column_config.TextColumn("Opponent", width="large"),
+                "Spread": st.column_config.TextColumn("Spread", width="small"),
                 "Win Prob": st.column_config.ProgressColumn(
                     "Win Prob",
                     min_value=0.0,
                     max_value=100.0,
                     format="%.1f%%",
+                    width="medium",
                 ),
             },
         )
