@@ -841,7 +841,7 @@ if tab_choice == "📊 Team Dashboards":
     .schedule-table thead th:nth-child(2),
     .schedule-table tbody td:nth-child(2) { /* Opponent */
       width: 100%;  /* flex wider */
-      min-width: 220px;
+      min-width: 240px;
     }
     .schedule-table thead th:nth-child(3),
     .schedule-table tbody td:nth-child(3) { /* Rk. */
@@ -853,7 +853,7 @@ if tab_choice == "📊 Team Dashboards":
     }
     .schedule-table thead th:nth-child(5),
     .schedule-table tbody td:nth-child(5) { /* Win Prob */
-      width: 95px; white-space: nowrap; text-align: center;
+      width: 75px; white-space: nowrap; text-align: center;
     }
     
     /* Win Prob cell: percent above pill bar */
