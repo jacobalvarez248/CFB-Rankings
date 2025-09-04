@@ -1027,18 +1027,24 @@ if tab_choice == "🤝 Comparison":
     home_logo = th['Logo'] or ""
     away_logo = ta['Logo'] or ""
 
+    from urllib.parse import quote  # already imported near the top
+
     def team_html(team, logo, pwr, off, deff):
+        href = f'?selected_team={quote(team)}#📊%20Team%20Dashboards'
         return f"""
           <div class="team-card">
             <div class="team-head">
-              <img src="{logo}" alt="logo" class="team-logo"/>
-              <h3 class="team-name">{team}</h3>
+              <a href="{href}" class="dash-link" title="Go to {team} dashboard">
+                <img src="{logo}" alt="logo" class="team-logo"/>
+              </a>
+              <h3 class="team-name"><a href="{href}" class="dash-link">{team}</a></h3>
             </div>
             <div class="badges"><span class="badge">Pwr</span><span class="val">{pwr}</span></div>
             <div class="badges"><span class="badge">Off</span><span class="val">{off}</span></div>
             <div class="badges"><span class="badge">Def</span><span class="val">{deff}</span></div>
           </div>
         """
+
 
     home_html = team_html(home_team, home_logo, th['Pwr Rank'], th['Off Rank'], th['Def Rank'])
     away_html = team_html(away_team, away_logo, ta['Pwr Rank'], ta['Off Rank'], ta['Def Rank'])
@@ -1116,6 +1122,9 @@ if tab_choice == "🤝 Comparison":
             .team-name {{ font-size: 14px; }}
             .score-main {{ font-size: 24px; }}
           }}
+          .dash-link { color: inherit; text-decoration: none; }
+          .dash-link:hover { text-decoration: underline; }
+          .team-logo { cursor: pointer; }
         </style>
         """,
         unsafe_allow_html=True
