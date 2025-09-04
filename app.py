@@ -762,51 +762,64 @@ if tab_choice == "📊 Team Dashboards":
     
     st.markdown("#### Schedule")
 
-    # -------------- CSS: kill horizontal scroll + force blue headers --------------
+    # -------------- CSS: remove horizontal scroll + match blue headers --------------
     st.markdown("""
     <style>
-    /* 1) Make the outer element and inner grid never scroll horizontally */
-    [data-testid="stHorizontalBlock"] { overflow-x: clip !important; }
-    .element-container { overflow-x: clip !important; }
-    [data-testid="stDataFrame"] { overflow-x: clip !important; }
-    [data-testid="stDataFrame"] [role="grid"] { overflow-x: clip !important; max-width: 100% !important; }
+    /* 1) Containing elements: never show horizontal scroll */
+    [data-testid="stHorizontalBlock"],
+    .element-container,
+    [data-testid="stDataFrame"],
+    [data-testid="stDataFrame"] [role="grid"] {
+      overflow-x: clip !important;
+      max-width: 100% !important;
+    }
     
-    /* 2) Blue header background + blue header text (robust selector) */
+    /* 2) Match app header style: dark blue background, white text */
     [data-testid="stDataFrame"] [role="columnheader"] {
-      background-color: #e6f0ff !important;   /* light blue */
-      color: #1f4ed8 !important;               /* header text blue */
-      font-weight: 700 !important;
+      background-color: #002060 !important;  /* your app blue */
+      color: #ffffff !important;
+      font-weight: 600 !important;
+      text-transform: uppercase;
       border-bottom: 1px solid #c9d8ff !important;
     }
     
-    /* 3) Keep cells from forcing horizontal growth */
+    /* 3) Wrap cells so content never forces horizontal growth */
     [data-testid="stDataFrame"] [role="gridcell"] {
-      white-space: nowrap !important;      /* match Streamlit look */
-      text-overflow: ellipsis !important;  /* truncate instead of widening */
+      white-space: normal !important;
+      word-break: break-word !important;
+      text-overflow: clip !important;
       overflow: hidden !important;
+      line-height: 1.2 !important;
+      padding: 6px 8px !important;
     }
     
-    /* 4) Let Opponent wrap if you prefer no truncation; if so, swap to 'normal' */
-    [data-testid="stDataFrame"] [data-testid="column-Opponent"] [role="gridcell"] {
-      white-space: normal !important;   /* allow wrapping */
+    /* Keep tiny numeric/progress columns compact */
+    [data-testid="stDataFrame"] [data-testid="column-Game"] [role="gridcell"],
+    [data-testid="stDataFrame"] [data-testid="column-Spread"] [role="gridcell"],
+    [data-testid="stDataFrame"] [data-testid="column-Win Prob"] [role="gridcell"] {
+      white-space: nowrap !important;
     }
-
+    
+    /* Optional: slightly tighter header row height */
+    [data-testid="stDataFrame"] [role="columnheader"] * {
+      line-height: 1.1 !important;
+      padding: 4px 6px !important;
     }
     </style>
     """, unsafe_allow_html=True)
     
+    # Build schedule frame for the selected team (assumes _team_schedule_df exists)
+    sched_df = _team_schedule_df(selected_team)
+    
     if sched_df.empty:
         st.info("No schedule rows found for this team on the **Schedule** sheet.")
     else:
-        # TIP: Up top in your app, ensure wide layout:
-        # st.set_page_config(layout="wide")
-    
+        # TIP (once, near top of app): st.set_page_config(layout="wide")
         st.dataframe(
             sched_df,
             use_container_width=True,
             hide_index=True,
             column_config={
-                # Keep columns compact to avoid horizontal scroll on smaller screens
                 "Game": st.column_config.NumberColumn("Game", format="%d", width="small"),
                 "Opponent": st.column_config.TextColumn("Opponent", width="large"),  # main flex column
                 "Spread": st.column_config.TextColumn("Spread", width="small"),
@@ -815,10 +828,11 @@ if tab_choice == "📊 Team Dashboards":
                     min_value=0.0,
                     max_value=100.0,
                     format="%.1f%%",
-                    width="small",   # keep the progress column narrow to prevent overflow
+                    width="small",
                 ),
             },
         )
+    
 
 # ----------------------------------------------------- COMPARISON TAB ------------------------------------------------
 if tab_choice == "🤝 Comparison":
