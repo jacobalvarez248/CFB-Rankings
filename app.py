@@ -762,48 +762,40 @@ if tab_choice == "📊 Team Dashboards":
     
     st.markdown("#### Schedule")
 
-    # -------------- CSS: remove horizontal scroll + match blue headers --------------
+    # --- Global CSS to keep things tidy and responsive ---
     st.markdown("""
     <style>
-    /* 1) Containing elements: never show horizontal scroll */
-    [data-testid="stHorizontalBlock"],
-    .element-container,
-    [data-testid="stDataFrame"],
-    [data-testid="stDataFrame"] [role="grid"] {
-      overflow-x: clip !important;
-      max-width: 100% !important;
+    /* Keep the page from showing horizontal scrollbars */
+    .block-container { overflow-x: hidden !important; }
+    
+    /* Make the schedule table fill width and never side-scroll */
+    [data-testid="stTable"] table {
+      table-layout: fixed;   /* forces columns to respect widths and wrap */
+      width: 100% !important;
     }
     
-    /* 2) Match app header style: dark blue background, white text */
-    [data-testid="stDataFrame"] [role="columnheader"] {
-      background-color: #002060 !important;  /* your app blue */
-      color: #ffffff !important;
-      font-weight: 600 !important;
-      text-transform: uppercase;
-      border-bottom: 1px solid #c9d8ff !important;
-    }
-    
-    /* 3) Wrap cells so content never forces horizontal growth */
-    [data-testid="stDataFrame"] [role="gridcell"] {
+    /* Wrap all cells so long text doesn't push width */
+    [data-testid="stTable"] table th,
+    [data-testid="stTable"] table td {
       white-space: normal !important;
       word-break: break-word !important;
-      text-overflow: clip !important;
-      overflow: hidden !important;
-      line-height: 1.2 !important;
-      padding: 6px 8px !important;
     }
     
-    /* Keep tiny numeric/progress columns compact */
-    [data-testid="stDataFrame"] [data-testid="column-Game"] [role="gridcell"],
-    [data-testid="stDataFrame"] [data-testid="column-Spread"] [role="gridcell"],
-    [data-testid="stDataFrame"] [data-testid="column-Win Prob"] [role="gridcell"] {
+    /* Compact numeric columns by default */
+    [data-testid="stTable"] table th:nth-child(1),
+    [data-testid="stTable"] table td:nth-child(1) {  /* Game */
+      width: 72px;
       white-space: nowrap !important;
     }
-    
-    /* Optional: slightly tighter header row height */
-    [data-testid="stDataFrame"] [role="columnheader"] * {
-      line-height: 1.1 !important;
-      padding: 4px 6px !important;
+    [data-testid="stTable"] table th:nth-child(3),
+    [data-testid="stTable"] table td:nth-child(3) {  /* Spread */
+      width: 90px;
+      white-space: nowrap !important;
+    }
+    [data-testid="stTable"] table th:nth-child(4),
+    [data-testid="stTable"] table td:nth-child(4) {  /* Win Prob */
+      width: 110px;
+      white-space: nowrap !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -814,25 +806,42 @@ if tab_choice == "📊 Team Dashboards":
     if sched_df.empty:
         st.info("No schedule rows found for this team on the **Schedule** sheet.")
     else:
-        # TIP (once, near top of app): st.set_page_config(layout="wide")
-        st.dataframe(
-            sched_df,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Game": st.column_config.NumberColumn("Game", format="%d", width="small"),
-                "Opponent": st.column_config.TextColumn("Opponent", width="large"),  # main flex column
-                "Spread": st.column_config.TextColumn("Spread", width="small"),
-                "Win Prob": st.column_config.ProgressColumn(
-                    "Win Prob",
-                    min_value=0.0,
-                    max_value=100.0,
-                    format="%.1f%%",
-                    width="small",
-                ),
-            },
+        # Format values for a clean, scroll-free static table
+        _df = sched_df.copy()
+        if "Game" in _df.columns:
+            _df["Game"] = _df["Game"].astype("int64")
+        if "Win Prob" in _df.columns:
+            _df["Win Prob"] = _df["Win Prob"].astype(float) * 100 if _df["Win Prob"].max() <= 1 else _df["Win Prob"]
+            _df["Win Prob"] = _df["Win Prob"].map(lambda x: f"{x:.1f}%")
+        if "Spread" in _df.columns:
+            # Ensure Spread is a short string so it doesn't wrap weirdly
+            _df["Spread"] = _df["Spread"].astype(str)
+    
+        # Style header to your app blue with white text; hide index; pad cells a bit
+        styled = (
+            _df.style
+            .hide(axis="index")
+            .set_table_styles([
+                {"selector": "th",
+                 "props": [("background-color", "#002060"),
+                           ("color", "#ffffff"),
+                           ("font-weight", "600"),
+                           ("text-transform", "uppercase"),
+                           ("border-bottom", "1px solid #c9d8ff"),
+                           ("padding", "6px 8px")]},
+                {"selector": "td",
+                 "props": [("padding", "6px 8px"),
+                           ("line-height", "1.2")]}
+            ])
         )
     
+        # st.table renders the Styler as static HTML (no inner scrollbars)
+        # If your Streamlit version supports it, keep use_container_width=True; otherwise just call st.table(styled)
+        try:
+            st.table(styled, use_container_width=True)
+        except TypeError:
+            st.table(styled)
+
 
 # ----------------------------------------------------- COMPARISON TAB ------------------------------------------------
 if tab_choice == "🤝 Comparison":
