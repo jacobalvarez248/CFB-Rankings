@@ -262,14 +262,24 @@ def style_rank_table(df):
 # Tab selector with auto-switch logic
 query_params = st.query_params
 selected_team = query_params.get("selected_team", "")
-default_tab = "📊 Team Dashboards" if selected_team else "🏆 Rankings"
+
+# 👇 NEW: if URL says view=comparison, make that the default
+if query_params.get("view") == "comparison":
+    default_tab = "🤝 Comparison"
+elif selected_team:
+    default_tab = "📊 Team Dashboards"
+else:
+    default_tab = "🏆 Rankings"
+
+tabs = ["🏆 Rankings", "📈 Metrics", "📊 Team Dashboards", "🤝 Comparison"]
+default_index = tabs.index(default_tab)
 
 tab_choice = st.radio(
     " ",
-    ["🏆 Rankings", "📈 Metrics", "📊 Team Dashboards", "🤝 Comparison"],
+    tabs,
     horizontal=True,
     label_visibility="collapsed",
-    index=0 if default_tab == "🏆 Rankings" else (3 if default_tab == "🤝 Comparison" else (2 if default_tab == "📊 Team Dashboards" else 1)))
+    index=default_index,)
 
 #-----------------------------------------------------RANKINGS TAB------------------------------------------------
 if tab_choice == "🏆 Rankings":
@@ -729,7 +739,12 @@ if tab_choice == "📊 Team Dashboards":
         def _is_neutral(loc_raw: str) -> bool:
             t = (str(loc_raw) or '').strip().lower()
             return t.startswith('neutral')  # adapt if you have a specific value
-    
+        def _is_away(loc_raw: str) -> bool:
+            t = (str(loc_raw) or '').strip().lower()
+            return t in ('@', 'at', 'away')
+        
+        s['Away'] = s[loc_col].apply(_is_away)
+
         def _loc_prefix(loc_raw: str) -> str:
             t = (str(loc_raw) or '').strip().lower()
             if t.startswith('neutral'):
@@ -778,7 +793,7 @@ if tab_choice == "📊 Team Dashboards":
     
         out = (
             s.rename(columns={game_col: 'Game'})
-             [['Game', 'Opponent', 'Spread', 'Win Prob', 'Opp Name', 'Neutral']]
+             [['Game', 'Opponent', 'Spread', 'Win Prob', 'Opp Name', 'Neutral', 'Away']]
              .reset_index(drop=True)
         )
         return out
@@ -847,6 +862,15 @@ if tab_choice == "📊 Team Dashboards":
       background: #1f6fe5;
       border-radius: 9999px;
     }
+    /* Make schedule links look like plain text */
+    .schedule-table a.sched-link {
+      color: inherit !important;
+      text-decoration: none !important;
+      cursor: pointer;
+    }
+    .schedule-table a.sched-link:hover {
+      text-decoration: underline; /* or remove this line if you want zero hover styling */
+    }
     </style>
     """, unsafe_allow_html=True)
     
@@ -878,24 +902,28 @@ if tab_choice == "📊 Team Dashboards":
         if "Spread" in df.columns:
             df["Spread"] = df["Spread"].astype(str)
         
-        from urllib.parse import urlencode, quote  # make sure this import exists at top
+        from urllib.parse import urlencode, quote
 
-        # Turn Opponent into a link to the Comparison tab with pre-filled params
-        if "Opponent" in df.columns and {"Opp Name","Neutral"}.issubset(df.columns):
+        if "Opponent" in df.columns and {"Opp Name","Neutral","Away"}.issubset(df.columns):
             def _opp_link_row(row):
+                # If this is an away game for the selected team, opponent is home
+                is_away = bool(row["Away"])
+                home = row["Opp Name"] if is_away else selected_team
+                away = selected_team if is_away else row["Opp Name"]
                 qs = urlencode({
                     "view": "comparison",
-                    "home": selected_team,                    # current team in Team Dashboards
-                    "away": row["Opp Name"],                  # raw opponent name (no 'vs/at' prefix)
+                    "home": home,
+                    "away": away,
                     "neutral": "1" if bool(row["Neutral"]) else "0",
                 }, quote_via=quote)
-                return f'<a href="?{qs}">{row["Opponent"]}</a>'
+                return f'<a class="sched-link" href="?{qs}">{row["Opponent"]}</a>'
         
             df["Opponent"] = df.apply(_opp_link_row, axis=1)
         
-        # Drop helper cols so they don’t render
+        # Hide helper cols
         render_cols = [c for c in ["Game","Opponent","Spread","Win Prob"] if c in df.columns]
         df = df[render_cols]
+
 
         html = df.to_html(escape=False, index=False, classes="schedule-table")
         st.markdown(html, unsafe_allow_html=True)
