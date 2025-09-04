@@ -713,8 +713,7 @@ if tab_choice == "📊 Team Dashboards":
         def _pick(df, *cands):
             lower = {c.lower(): c for c in df.columns}
             for c in cands:
-                if c.lower() in lower:
-                    return lower[c.lower()]
+                if c.lower() in lower: return lower[c.lower()]
             raise KeyError(f"Missing expected column; looked for {cands}")
     
         team_col   = _pick(sch, 'Team', 'Team Name')
@@ -726,59 +725,52 @@ if tab_choice == "📊 Team Dashboards":
     
         s = sch[sch[team_col].astype(str) == team_name].copy()
     
-        # ---- Opponent: normalize location; "neutral" -> "vs" ----
+        # ---- Location helpers ----
+        def _is_neutral(loc_raw: str) -> bool:
+            t = (str(loc_raw) or '').strip().lower()
+            return t.startswith('neutral')  # adapt if you have a specific value
+    
         def _loc_prefix(loc_raw: str) -> str:
             t = (str(loc_raw) or '').strip().lower()
             if t.startswith('neutral'):
-                return 'vs'
+                return 'vs'            # display
             if t in ('@', 'at', 'away'):
                 return 'at'
-            # treat '', 'home', 'vs', 'v', etc. as home/neutral -> 'vs'
-            return 'vs'
+            return 'vs'                # home/unknown → 'vs'
     
-        s['Opponent'] = s.apply(
-            lambda r: f"{_loc_prefix(r[loc_col])} {str(r[opp_col]).strip()}".strip(),
-            axis=1
-        )
+        s['Opp Name'] = s[opp_col].astype(str).str.strip()
+        s['Neutral']  = s[loc_col].apply(_is_neutral)
+        s['Opponent'] = s.apply(lambda r: f"{_loc_prefix(r[loc_col])} {r['Opp Name']}".strip(), axis=1)
     
-        # ---- Win Prob: convert to 0..100 float for proper bars & labels ----
+        # ---- Win Prob to 0..100 float ----
         def _to_prob_pct(x):
             if pd.isna(x): return np.nan
             if isinstance(x, str):
                 xs = x.strip().replace('%', '')
                 try:
-                    v = float(xs)
-                    return v if v > 1 else v * 100.0
-                except:
-                    return np.nan
+                    v = float(xs); return v if v > 1 else v * 100.0
+                except: return np.nan
             try:
-                v = float(x)
-                return v if v > 1 else v * 100.0
-            except:
-                return np.nan
+                v = float(x); return v if v > 1 else v * 100.0
+            except: return np.nan
     
         s['Win Prob'] = s[wp_col].apply(_to_prob_pct)
     
-        # ---- Spread: round to nearest .5, then invert sign; WIN/LOSS preserved ----
+        # ---- Spread formatting (your existing logic) ----
         def _round_half(v):
-            fv = float(v)
-            return round(fv * 2) / 2.0
+            fv = float(v); return round(fv * 2) / 2.0
     
         def _invert_and_format(v):
-            if pd.isna(v) or str(v).strip().lower() in ('none', ''):
-                return ''
-            txt = str(v).strip()
-            up = txt.upper()
-            if 'WIN' in up:
-                return '🟢 WIN'
-            if 'LOSS' in up or 'LOSE' in up:
-                return '🔴 LOSS'
+            if pd.isna(v) or str(v).strip().lower() in ('none', ''): return ''
+            txt = str(v).strip(); up = txt.upper()
+            if 'WIN' in up:  return '🟢 WIN'
+            if 'LOSS' in up or 'LOSE' in up: return '🔴 LOSS'
             try:
                 val = float(txt.replace('+',''))
-                val = -1.0 * _round_half(val)       # invert sign
-                if abs(val) < 0.05: val = 0.0       # kill -0.0
+                val = -1.0 * _round_half(val)
+                if abs(val) < 0.05: val = 0.0
                 sign = '+' if val > 0 else ''
-                return f"{sign}{val:.1f}"           # always .0 or .5
+                return f"{sign}{val:.1f}"
             except:
                 return txt
     
@@ -786,11 +778,12 @@ if tab_choice == "📊 Team Dashboards":
     
         out = (
             s.rename(columns={game_col: 'Game'})
-             [['Game', 'Opponent', 'Spread', 'Win Prob']]
+             [['Game', 'Opponent', 'Spread', 'Win Prob', 'Opp Name', 'Neutral']]
              .reset_index(drop=True)
         )
         return out
     
+        
     sched_df = _team_schedule_df(selected_team)
     
     st.markdown("#### Schedule")
@@ -884,7 +877,26 @@ if tab_choice == "📊 Team Dashboards":
     
         if "Spread" in df.columns:
             df["Spread"] = df["Spread"].astype(str)
-    
+        
+        from urllib.parse import urlencode, quote  # make sure this import exists at top
+
+        # Turn Opponent into a link to the Comparison tab with pre-filled params
+        if "Opponent" in df.columns and {"Opp Name","Neutral"}.issubset(df.columns):
+            def _opp_link_row(row):
+                qs = urlencode({
+                    "view": "comparison",
+                    "home": selected_team,                    # current team in Team Dashboards
+                    "away": row["Opp Name"],                  # raw opponent name (no 'vs/at' prefix)
+                    "neutral": "1" if bool(row["Neutral"]) else "0",
+                }, quote_via=quote)
+                return f'<a href="?{qs}">{row["Opponent"]}</a>'
+        
+            df["Opponent"] = df.apply(_opp_link_row, axis=1)
+        
+        # Drop helper cols so they don’t render
+        render_cols = [c for c in ["Game","Opponent","Spread","Win Prob"] if c in df.columns]
+        df = df[render_cols]
+
         html = df.to_html(escape=False, index=False, classes="schedule-table")
         st.markdown(html, unsafe_allow_html=True)
 
