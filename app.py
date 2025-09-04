@@ -892,47 +892,47 @@ if tab_choice == "📊 Team Dashboards":
 if tab_choice == "🤝 Comparison":
     st.markdown("## 🤝 Comparison")
 
-        # Build unified frame once
-        team_frame = build_team_frame(df, metrics_df, logos_df)
-        all_teams = sorted(team_frame['Team'].tolist())
-    
-        # ---- Defaults from URL/session (if present), else your existing fallbacks ----
-        # Home default: comp_home > selected_team (if valid) > first team
-        h_default = (
-            st.session_state.get("comp_home")
-            or (st.session_state.get("selected_team") if st.session_state.get("selected_team") in all_teams else None)
-            or all_teams[0]
-        )
-    
-        # Away default: comp_away > first team that's not home
-        # (handles edge case if comp_away == h_default)
-        a_default = st.session_state.get("comp_away")
-        if not a_default or a_default not in all_teams or a_default == h_default:
-            a_default = next(t for t in all_teams if t != h_default)
-    
-        neutral_default = st.session_state.get("comp_neutral", False)
-    
-        # ---- Controls (now honoring defaults from URL/session) ----
-        csel1, csel2, csel3 = st.columns([2, 2, 1])
-        with csel1:
-            home_team = st.selectbox("Home Team", all_teams, index=all_teams.index(h_default))
-        with csel2:
-            away_team = st.selectbox("Away Team", all_teams, index=all_teams.index(a_default))
-        with csel3:
-            neutral = st.checkbox("Neutral site?", value=neutral_default)
-    
-        # Keep URL in sync when user changes the controls manually
-        st.query_params.update({
-            "view": "comparison",
-            "home": home_team,
-            "away": away_team,
-            "neutral": "1" if neutral else "0",
-        })
-    
-        # Also update session_state so subsequent navigations pick up latest choices
-        st.session_state["comp_home"] = home_team
-        st.session_state["comp_away"] = away_team
-        st.session_state["comp_neutral"] = neutral
+    # Build unified frame once
+    team_frame = build_team_frame(df, metrics_df, logos_df)
+    all_teams = sorted(team_frame['Team'].tolist())
+
+    # ---- Defaults from URL/session (if present), else your existing fallbacks ----
+    # Home default: comp_home > selected_team (if valid) > first team
+    h_default = (
+        st.session_state.get("comp_home")
+        or (st.session_state.get("selected_team") if st.session_state.get("selected_team") in all_teams else None)
+        or all_teams[0]
+    )
+
+    # Away default: comp_away > first team that's not home
+    # (handles edge case if comp_away == h_default)
+    a_default = st.session_state.get("comp_away")
+    if not a_default or a_default not in all_teams or a_default == h_default:
+        a_default = next(t for t in all_teams if t != h_default)
+
+    neutral_default = st.session_state.get("comp_neutral", False)
+
+    # ---- Controls (now honoring defaults from URL/session) ----
+    csel1, csel2, csel3 = st.columns([2, 2, 1])
+    with csel1:
+        home_team = st.selectbox("Home Team", all_teams, index=all_teams.index(h_default))
+    with csel2:
+        away_team = st.selectbox("Away Team", all_teams, index=all_teams.index(a_default))
+    with csel3:
+        neutral = st.checkbox("Neutral site?", value=neutral_default)
+
+    # Keep URL in sync when user changes the controls manually
+    st.query_params.update({
+        "view": "comparison",
+        "home": home_team,
+        "away": away_team,
+        "neutral": "1" if neutral else "0",
+    })
+
+    # Also update session_state so subsequent navigations pick up latest choices
+    st.session_state["comp_home"] = home_team
+    st.session_state["comp_away"] = away_team
+    st.session_state["comp_neutral"] = neutral
 
 
     # --- SIDE-BY-SIDE TEAM CARDS (always fit) + SCORE BELOW ---
