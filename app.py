@@ -762,10 +762,9 @@ if tab_choice == "📊 Team Dashboards":
     
     st.markdown("#### Schedule")
 
-    # ---------- CSS (compact text, blue headers w/ normal case, pill progress bars) ----------
+    # ---------- CSS (compact text, blue headers normal case, pill progress bars) ----------
     st.markdown("""
     <style>
-    /* Keep page from side-scrolling and make the table fill its container */
     .block-container { overflow-x: hidden !important; }
     .schedule-table {
       table-layout: fixed;
@@ -777,7 +776,7 @@ if tab_choice == "📊 Team Dashboards":
     .schedule-table thead th {
       background: #002060;       /* app blue */
       color: #ffffff;
-      font-weight: 600;          /* no text-transform -> normal case */
+      font-weight: 600;          /* normal case (no uppercase transform) */
       padding: 6px 8px;
       border-bottom: 1px solid #c9d8ff;
       text-align: left;
@@ -786,9 +785,10 @@ if tab_choice == "📊 Team Dashboards":
       padding: 6px 8px;
       vertical-align: top;
       word-break: break-word;
+      font-size: 13px;
     }
     
-    /* Column sizing (adjust if your order differs) */
+    /* Column sizing + alignment */
     .schedule-table thead th:nth-child(1),
     .schedule-table tbody td:nth-child(1) { /* Game */
       width: 64px; white-space: nowrap;
@@ -796,18 +796,20 @@ if tab_choice == "📊 Team Dashboards":
     .schedule-table thead th:nth-child(3),
     .schedule-table tbody td:nth-child(3) { /* Spread */
       width: 84px; white-space: nowrap;
+      text-align: center;
     }
     .schedule-table thead th:nth-child(4),
     .schedule-table tbody td:nth-child(4) { /* Win Prob */
       width: 140px; white-space: nowrap;
+      text-align: center;
     }
     
-    /* Win Prob cell: percent text above a rounded bar */
-    .wp-cell { display: flex; flex-direction: column; gap: 4px; }
-    .wp-pct  { font-weight: 600; }  /* small, bold percent like your screenshot */
+    /* Win Prob cell: percent above pill bar */
+    .wp-cell { display: flex; flex-direction: column; gap: 4px; align-items: center; }
+    .wp-pct  { font-weight: 600; font-size: 12px; }
     .wp-track {
       width: 100%;
-      height: 10px;                 /* pill height */
+      height: 10px;
       background: #e7eefb;          /* light track */
       border-radius: 9999px;
       overflow: hidden;
@@ -815,7 +817,7 @@ if tab_choice == "📊 Team Dashboards":
     .wp-fill {
       height: 100%;
       background: #1f6fe5;          /* blue fill */
-      border-radius: 9999px;         /* keep pill ends rounded */
+      border-radius: 9999px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -828,33 +830,29 @@ if tab_choice == "📊 Team Dashboards":
     else:
         df = sched_df.copy()
     
-        # Types / formatting
         if "Game" in df.columns:
             df["Game"] = df["Game"].astype("int64")
     
-        # Normalize Win Prob to 0–100 numeric
         if "Win Prob" in df.columns:
             wp = df["Win Prob"].astype(float)
             df["Win Prob"] = (wp * 100) if wp.max() <= 1.0 else wp
     
-            # Build pill-style HTML for each Win Prob cell
             def _wp_cell(x):
                 pct = f"{x:.1f}%"
-                return f'''
-                <div class="wp-cell">
-                  <div class="wp-pct">{pct}</div>
-                  <div class="wp-track"><div class="wp-fill" style="width:{x:.1f}%"></div></div>
-                </div>'''
+                return (
+                    f'<div class="wp-cell">'
+                    f'<div class="wp-pct">{pct}</div>'
+                    f'<div class="wp-track"><div class="wp-fill" style="width:{x:.1f}%"></div></div>'
+                    f'</div>'
+                )
             df["Win Prob"] = df["Win Prob"].map(_wp_cell)
     
-        # Ensure Spread is a short string
         if "Spread" in df.columns:
             df["Spread"] = df["Spread"].astype(str)
     
-        # Convert to HTML (no index) with our class so CSS applies
+        # Render as static HTML table with our CSS
         html = df.to_html(escape=False, index=False, classes="schedule-table")
         st.markdown(html, unsafe_allow_html=True)
-    
 
 # ----------------------------------------------------- COMPARISON TAB ------------------------------------------------
 if tab_choice == "🤝 Comparison":
