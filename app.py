@@ -842,8 +842,8 @@ if tab_choice == "📊 Team Dashboards":
     
     .schedule-table thead th:nth-child(2),
     .schedule-table tbody td:nth-child(2) { /* Opponent */
-      width: 140px;  /* was 100% flex */
-      min-width: 140px; /* allow it to expand more */
+      width: 120px;  /* was 100% flex */
+      min-width: 120px; /* allow it to expand more */
     }
     
     .schedule-table thead th:nth-child(3),
