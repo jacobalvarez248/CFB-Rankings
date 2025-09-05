@@ -714,6 +714,12 @@ if tab_choice == "📊 Team Dashboards":
     # (Optional) faint divider
     st.markdown("<hr style='opacity:.2;'>", unsafe_allow_html=True)
 
+    # Current rank map (from your main df, not the Schedule sheet)
+    current_rank_map = {}
+    if 'Rk' in df.columns:
+        _rk_tmp = df.reset_index()[['Team Name', 'Rk']].dropna()
+        current_rank_map = dict(zip(_rk_tmp['Team Name'].astype(str), _rk_tmp['Rk'].astype(int)))
+
     # -------------------------- Team Schedule (no scroll, blue headers, neutral→vs) --------------------------
     @st.cache_data
     def _team_schedule_df(team_name: str) -> pd.DataFrame:
@@ -780,7 +786,8 @@ if tab_choice == "📊 Team Dashboards":
         s['Neutral']  = s[loc_col].apply(_is_neutral)
         s['Away']     = s[loc_col].apply(_is_away)
         s['Opponent'] = s.apply(lambda r: f"{_loc_prefix(r[loc_col])} {r['Opp Name']}".strip(), axis=1)
-    
+        s['Rk.'] = s['Opp Name'].map(current_rank_map).astype('Int64')
+
         # ----- Win Prob → % float -----
         def _to_prob_pct(x):
             if pd.isna(x): return np.nan
@@ -845,23 +852,17 @@ if tab_choice == "📊 Team Dashboards":
 
     
         # ----- Assemble output columns (only those that exist) -----
-        cols = ['Game', 'Opponent', 'Spread', 'Win Prob', 'Win Prob Raw', 'Opp Name', 'Neutral', 'Away']
-        if rk_col and rk_col in s.columns:
-            cols.insert(2, rk_col)
+        cols = ['Game', 'Opponent', 'Rk.', 'Spread', 'Win Prob', 'Win Prob Raw', 'Opp Name', 'Neutral', 'Away']
         if game_score_col and game_score_col in s.columns:
             cols.append(game_score_col)
         if opp_score_col and opp_score_col in s.columns:
             cols.append(opp_score_col)
-    
+        
         out = (
-            s.rename(columns={game_col: 'Game'})
-             [cols]
-             .rename(columns={rk_col: 'Rk.'} if rk_col else {})
-             .rename(columns={game_score_col: 'Game Score'} if game_score_col else {})
-             .rename(columns={opp_score_col: 'Opponent Score'} if opp_score_col else {})
-             .reset_index(drop=True)
+            s.rename(columns={game_col: 'Game'})[cols]
+              .reset_index(drop=True)
         )
-    
+            
         return out
     
     sched_df = _team_schedule_df(selected_team)
