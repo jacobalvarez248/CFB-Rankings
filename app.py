@@ -716,6 +716,12 @@ if tab_choice == "📊 Team Dashboards":
 
     # -------------------------- Team Schedule (no scroll, blue headers, neutral→vs) --------------------------
     @st.cache_data
+    def _safe_pick(df, *names):
+        for n in names:
+            if n in df.columns:
+                return n
+        return None  # don't explode if not found
+        
     def _team_schedule_df(team_name: str):
         sch = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Schedule', header=0)
         sch.columns = [str(c).strip() for c in sch.columns]
@@ -733,10 +739,32 @@ if tab_choice == "📊 Team Dashboards":
         spread_col = _pick(sch, 'Spread')
         wp_col     = _pick(sch, 'Win Prob', 'Win Probability', 'WP')
         rk_col     = _pick(sch, 'Opponent Ranking', 'Opp Rk', 'Opp Rank', 'Rk.')
-        game_score_col = _pick(sch, 'Game Score')
-        opp_score_col  = _pick(sch, 'Opponent Score')
-
-        s = sch[sch[team_col].astype(str) == team_name].copy()
+        game_score_col = _safe_pick(s, 'Game Score', 'GameScore')
+        opp_score_col  = _safe_pick(s, 'Opponent Score', 'OpponentScore')
+        base_cols = ['Game', 'Opponent', rk_col, 'Spread', 'Win Prob', 'Win Prob Raw',
+                 'Opp Name', 'Neutral', 'Away']
+        # keep only those that actually exist
+        base_cols = [c for c in base_cols if c in s.columns]
+    
+        cols = base_cols.copy()
+        renames = {rk_col: 'Rk.'} if rk_col in s.columns else {}
+    
+        if game_score_col:
+            cols.append(game_score_col)
+            renames[game_score_col] = 'Game Score'
+        if opp_score_col:
+            cols.append(opp_score_col)
+            renames[opp_score_col] = 'Opponent Score'
+    
+        out = (s.rename(columns={game_col: 'Game'})[cols]
+                 .rename(columns=renames)
+                 .reset_index(drop=True))
+    
+        # Always return a DataFrame
+        if not isinstance(out, pd.DataFrame):
+            out = pd.DataFrame(columns=['Game','Opponent','Rk.','Spread','Win Prob','Win Prob Raw',
+                                        'Opp Name','Neutral','Away','Game Score','Opponent Score'])
+        return out
     
         # ---- Location helpers ----
         def _is_neutral(loc_raw: str) -> bool:
