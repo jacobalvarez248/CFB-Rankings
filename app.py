@@ -971,10 +971,28 @@ if tab_choice == "📊 Team Dashboards":
             df["Win Prob"] = df["Win Prob"].map(_wp_cell_simple)
         
                 
-            def _wp_cell_row(row):
-                x = float(row["Win Prob"])
-                pct_html = f'<div class="wp-pct">{x:.1f}%</div>'
-                bar_html = f'<div class="wp-track"><div class="wp-fill" style="width:{x:.1f}%"></div></div>'
+            if "Win Prob" in df.columns:
+                # Normalize to percent only if values are 0..1
+                wp_num = pd.to_numeric(df["Win Prob"], errors="coerce")
+            
+                # scale to 0..100 only when there are valid numbers and max ≤ 1
+                finite = wp_num.replace([np.inf, -np.inf], np.nan).dropna()
+                if not finite.empty and finite.max() <= 1.0:
+                    wp_num = wp_num * 100.0
+            
+                def _wp_cell_simple(val):
+                    if pd.isna(val):
+                        return ""
+                    try:
+                        x = float(val)
+                    except:
+                        return ""
+                    pct_html = f'<div class="wp-pct">{x:.1f}%</div>'
+                    bar_html = f'<div class="wp-track"><div class="wp-fill" style="width:{x:.1f}%"></div></div>'
+                    return f'<div class="wp-cell">{pct_html}{bar_html}</div>'
+            
+                df["Win Prob"] = wp_num.map(_wp_cell_simple)
+
         
                 # Detect “🟢 WIN / 🔴 LOSS” from your Spread column (already computed earlier)
                 spread_txt = str(row.get("Spread", "")).upper()
