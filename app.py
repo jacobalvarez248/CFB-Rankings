@@ -1198,7 +1198,31 @@ if tab_choice == "📊 Team Dashboards":
         )
         
         st.markdown(styled_sum.to_html(escape=False), unsafe_allow_html=True)
-        
+
+        # Render with a padded wrapper div so the right border isn't flush on phones
+        st.markdown(
+            f"""
+            <div class="metrics-wrapper">
+              {styled_sum.to_html(escape=False)}
+            </div>
+            <div class="metric-note">
+              <em>Color scale: compares each metric relative to all teams</em>
+            </div>
+            <style>
+              .metrics-wrapper {{
+                padding-right: 12px;   /* add breathing room on the right edge */
+              }}
+              .metric-note {{
+                font-size: 11px;
+                color: #555;
+                margin-top: 4px;
+                margin-left: 4px;
+              }}
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+
 # ----------------------------------------------------- COMPARISON TAB ------------------------------------------------
 if tab_choice == "🤝 Comparison":
     st.markdown("## 🤝 Comparison")
