@@ -1318,11 +1318,11 @@ if tab_choice == "📊 Team Dashboards":
                 <style>
                   table.conf-standings { table-layout: fixed; width: 100%; }
                   table.conf-standings th, table.conf-standings td { text-align: center; }
-                  table.conf-standings th:nth-child(1), table.conf-standings td:nth-child(1) { width: 70px; white-space: nowrap; }
-                  table.conf-standings th:nth-child(2), table.conf-standings td:nth-child(2) { width: 70px; }
-                  table.conf-standings th:nth-child(3), table.conf-standings td:nth-child(3) { width: 90px; }
-                  table.conf-standings th:nth-child(4), table.conf-standings td:nth-child(4) { width: 110px; }
-                  table.conf-standings th:nth-child(5), table.conf-standings td:nth-child(5) { width: 110px; }
+                  table.conf-standings th:nth-child(1), table.conf-standings td:nth-child(1) { width: 65px; white-space: nowrap; }
+                  table.conf-standings th:nth-child(2), table.conf-standings td:nth-child(2) { width: 65px; }
+                  table.conf-standings th:nth-child(3), table.conf-standings td:nth-child(3) { width: 70px; }
+                  table.conf-standings th:nth-child(4), table.conf-standings td:nth-child(4) { width: 80px; }
+                  table.conf-standings th:nth-child(5), table.conf-standings td:nth-child(5) { width: 80px; }
                   table.conf-standings td img { display: block; margin: 0 auto; }
                 </style>
                 """, unsafe_allow_html=True)
