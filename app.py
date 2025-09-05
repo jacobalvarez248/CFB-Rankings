@@ -1204,58 +1204,69 @@ if tab_choice == "📊 Team Dashboards":
             cmap=BLUE_CMAP, subset=["Defense"], gmap=goodness_map["Defense"]
         )
         
-        st.markdown(styled_sum.to_html(escape=False), unsafe_allow_html=True)
         # ===== Projected Conference Standings =====
         st.markdown("#### Projected Conference Standings")
         
-        # Find the selected team's conference from your main df
-        conf_name = None
-        if "Conf Name" in df.columns and selected_team in df.index:
-            conf_name = df.loc[selected_team, "Conf Name"]
+        @st.cache_data
+        def _pick(df_, *cands):
+            lower = {c.lower(): c for c in df_.columns}
+            for c in cands:
+                if c.lower() in lower:
+                    return lower[c.lower()]
+            raise KeyError(f"Missing expected column; looked for {cands}")
+        
+        @st.cache_data
+        def _conf_for_team(team: str):
+            exp = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Expected Wins', header=1)
+            exp.columns = [str(c).strip() for c in exp.columns]
+            team_col = _pick(exp, "Team", "Team Name")
+            conf_col = _pick(exp, "Conference", "Conf", "Conf Name")
+            m = exp[exp[team_col].astype(str).str.strip().str.casefold()
+                    == str(team).strip().casefold()]
+            if m.empty:
+                return None
+            return str(m.iloc[0][conf_col]).strip()
         
         @st.cache_data
         def _conf_standings(conf: str) -> pd.DataFrame:
-            # Load Expected Wins sheet (robust column picking)
             exp = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Expected Wins', header=1)
             exp.columns = [str(c).strip() for c in exp.columns]
         
-            def _pick(df_, *cands):
-                lower = {c.lower(): c for c in df_.columns}
-                for c in cands:
-                    if c.lower() in lower:
-                        return lower[c.lower()]
-                raise KeyError(f"Missing expected column; looked for {cands}")
-        
-            team_col   = _pick(exp, "Team", "Team Name")
-            conf_col   = _pick(exp, "Conference", "Conf", "Conf Name")
-            pwr_col    = _pick(exp, "Power Rating")
-            pcw_col    = _pick(exp, "Projected Conference Wins", "Proj Conf W", "Proj. Conf W")
-            pcl_col    = _pick(exp, "Projected Conference Losses", "Proj Conf L", "Proj. Conf L")
+            team_col = _pick(exp, "Team", "Team Name")
+            conf_col = _pick(exp, "Conference", "Conf", "Conf Name")
+            pwr_col  = _pick(exp, "Power Rating")
+            pcw_col  = _pick(exp, "Projected Conference Wins", "Proj Conf W", "Proj. Conf W")
+            pcl_col  = _pick(exp, "Projected Conference Losses", "Proj Conf L", "Proj. Conf L")
         
             out = (
-                exp.loc[exp[conf_col].astype(str).str.strip() == str(conf).strip(),
-                        [team_col, conf_col, pwr_col, pcw_col, pcl_col]]
+                exp.loc[exp[conf_col].astype(str).str.strip().str.casefold()
+                        == str(conf).strip().casefold(),
+                        [team_col, pwr_col, pcw_col, pcl_col]]
                 .copy()
             )
             if out.empty:
                 return out
         
-            # Rank by projected conference wins (descending)
+            # Numeric
+            out[pcw_col] = pd.to_numeric(out[pcw_col], errors="coerce")
+            out[pcl_col] = pd.to_numeric(out[pcl_col], errors="coerce")
+            out[pwr_col] = pd.to_numeric(out[pwr_col], errors="coerce")
+        
+            # Rank by projected conf wins (desc)
             out["Proj. Rk."] = out[pcw_col].rank(ascending=False, method="min").astype("Int64")
         
-            # Rename to your display headers
+            # Display headers
             out.rename(columns={
                 team_col: "Team",
                 pwr_col:  "Pwr Rtg",
                 pcw_col:  "Proj Conf W",
                 pcl_col:  "Proj Conf L",
-                conf_col: "Conference",
             }, inplace=True)
         
-            # Sort by wins (desc), then power rating (desc)
+            # Sort table
             out.sort_values(["Proj Conf W", "Pwr Rtg"], ascending=[False, False], inplace=True)
         
-            # Team column → clickable logo (to Team Dashboard)
+            # Team logos (click → Team Dashboards)
             logos_map = logos_df.set_index("Team")["Image URL"].astype(str).to_dict()
             def _logo_link(team: str) -> str:
                 url = logos_map.get(team, "")
@@ -1267,19 +1278,19 @@ if tab_choice == "📊 Team Dashboards":
                 )
             out["Team"] = out["Team"].astype(str).map(_logo_link)
         
-            # Final column order
+            # Final order
             out = out[["Proj. Rk.", "Team", "Pwr Rtg", "Proj Conf W", "Proj Conf L"]]
             return out
         
-        if not conf_name or pd.isna(conf_name):
+        conf_name = _conf_for_team(selected_team)
+        if not conf_name:
             st.info("No conference found for this team.")
         else:
             conf_tbl = _conf_standings(conf_name)
             if conf_tbl.empty:
                 st.info(f"No projected conference standings for **{conf_name}**.")
             else:
-                # Format + gradients (match app style)
-                from matplotlib.colors import LinearSegmentedColormap
+                # Style like the rest of the app
                 cmap_blue  = LinearSegmentedColormap.from_list('white_to_darknavy',  ['#ffffff', '#002060'])
                 cmap_green = LinearSegmentedColormap.from_list('white_to_darkgreen', ['#ffffff', '#006400'])
         
@@ -1291,42 +1302,31 @@ if tab_choice == "📊 Team Dashboards":
                         .set_table_attributes('class="schedule-table conf-standings"')
                 )
         
-                # gmapped gradients
+                # Gradients: Pwr (blue higher=better), Wins (green higher=better), Losses (green lower=better)
                 pwr_vals = pd.to_numeric(conf_tbl["Pwr Rtg"], errors="coerce")
                 pcw_vals = pd.to_numeric(conf_tbl["Proj Conf W"], errors="coerce")
                 pcl_vals = pd.to_numeric(conf_tbl["Proj Conf L"], errors="coerce")
-                pcl_good = pcl_vals.max() - pcl_vals  # fewer losses = better (darker)
+                pcl_good = pcl_vals.max() - pcl_vals
         
                 styled_conf = styled_conf.background_gradient(cmap=cmap_blue,  subset=["Pwr Rtg"],    gmap=pwr_vals)
                 styled_conf = styled_conf.background_gradient(cmap=cmap_green, subset=["Proj Conf W"], gmap=pcw_vals)
                 styled_conf = styled_conf.background_gradient(cmap=cmap_green, subset=["Proj Conf L"], gmap=pcl_good)
         
-                # Widths + centering + right padding on mobile
                 st.markdown("""
                 <style>
                   table.conf-standings { table-layout: fixed; width: 100%; }
                   table.conf-standings th, table.conf-standings td { text-align: center; }
-                  table.conf-standings th:nth-child(1), table.conf-standings td:nth-child(1) { /* Proj. Rk. */
-                    width: 70px; white-space: nowrap;
-                  }
-                  table.conf-standings th:nth-child(2), table.conf-standings td:nth-child(2) { /* Team (logo only) */
-                    width: 70px;
-                  }
-                  table.conf-standings th:nth-child(3), table.conf-standings td:nth-child(3) { /* Pwr Rtg */
-                    width: 90px;
-                  }
-                  table.conf-standings th:nth-child(4), table.conf-standings td:nth-child(4) { /* Proj Conf W */
-                    width: 110px;
-                  }
-                  table.conf-standings th:nth-child(5), table.conf-standings td:nth-child(5) { /* Proj Conf L */
-                    width: 110px;
-                  }
+                  table.conf-standings th:nth-child(1), table.conf-standings td:nth-child(1) { width: 70px; white-space: nowrap; }
+                  table.conf-standings th:nth-child(2), table.conf-standings td:nth-child(2) { width: 70px; }
+                  table.conf-standings th:nth-child(3), table.conf-standings td:nth-child(3) { width: 90px; }
+                  table.conf-standings th:nth-child(4), table.conf-standings td:nth-child(4) { width: 110px; }
+                  table.conf-standings th:nth-child(5), table.conf-standings td:nth-child(5) { width: 110px; }
                   table.conf-standings td img { display: block; margin: 0 auto; }
                 </style>
                 """, unsafe_allow_html=True)
         
-                conf_html = styled_conf.to_html(escape=False)
-                st.markdown(f'<div class="table-pad-right">{conf_html}</div>', unsafe_allow_html=True)
+                st.markdown(styled_conf.to_html(escape=False), unsafe_allow_html=True)
+
 
 # ----------------------------------------------------- COMPARISON TAB ------------------------------------------------
 if tab_choice == "🤝 Comparison":
