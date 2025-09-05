@@ -1164,7 +1164,7 @@ if tab_choice == "📊 Team Dashboards":
         /* More specific than the global .schedule-table rules */
         table.team-metrics th:nth-child(1),
         table.team-metrics td:nth-child(1) {  /* Metric */
-          width: 220px !important;
+          width: 200px !important;
           min-width: 200px !important;
           text-align: left !important;
           font-weight: 600 !important;  /* bold */
