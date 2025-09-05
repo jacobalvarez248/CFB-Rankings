@@ -1154,35 +1154,40 @@ if tab_choice == "📊 Team Dashboards":
             summary[["Metric", "Offense", "Defense"]]
               .style
               .hide(axis="index")
-              .set_table_attributes('class="schedule-table"')  # keeps your blue headers CSS
+              .set_table_attributes('class="schedule-table team-metrics"')  # add team-metrics
         )
         st.markdown("""
         <style>
-        .schedule-table th:nth-child(1),
-        .schedule-table td:nth-child(1) {  /* Metric */
-            width: 220px;
-            min-width: 200px;
-            text-align: left !important;
-            font-weight: 600;   /* bold */
+        /* Make sure the metrics table uses fixed layout so widths apply */
+        table.team-metrics { table-layout: fixed; width: 100%; }
+        
+        /* More specific than the global .schedule-table rules */
+        table.team-metrics th:nth-child(1),
+        table.team-metrics td:nth-child(1) {  /* Metric */
+          width: 220px !important;
+          min-width: 200px !important;
+          text-align: left !important;
+          font-weight: 600 !important;  /* bold */
         }
         
-        .schedule-table th:nth-child(2),
-        .schedule-table td:nth-child(2) {  /* Offense */
-            width: 80px;
-            min-width: 70px;
-            text-align: center !important;
-            font-weight: normal;
+        table.team-metrics th:nth-child(2),
+        table.team-metrics td:nth-child(2) {  /* Offense */
+          width: 80px !important;
+          min-width: 70px !important;
+          text-align: center !important;
+          font-weight: normal !important;
         }
         
-        .schedule-table th:nth-child(3),
-        .schedule-table td:nth-child(3) {  /* Defense */
-            width: 100px;
-            min-width: 90px;
-            text-align: center !important;
-            font-weight: normal;
+        table.team-metrics th:nth-child(3),
+        table.team-metrics td:nth-child(3) {  /* Defense */
+          width: 100px !important;
+          min-width: 90px !important;
+          text-align: center !important;
+          font-weight: normal !important;
         }
         </style>
         """, unsafe_allow_html=True)
+
 
         # Apply per-column gradients so shapes always align
         styled_sum = styled_sum.background_gradient(
