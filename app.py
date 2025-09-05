@@ -733,7 +733,9 @@ if tab_choice == "📊 Team Dashboards":
         spread_col = _pick(sch, 'Spread')
         wp_col     = _pick(sch, 'Win Prob', 'Win Probability', 'WP')
         rk_col     = _pick(sch, 'Opponent Ranking', 'Opp Rk', 'Opp Rank', 'Rk.')
-    
+        game_score_col = _pick(sch, 'Game Score')
+        opp_score_col  = _pick(sch, 'Opponent Score')
+
         s = sch[sch[team_col].astype(str) == team_name].copy()
     
         # ---- Location helpers ----
@@ -796,12 +798,14 @@ if tab_choice == "📊 Team Dashboards":
     
         out = (
             s.rename(columns={game_col: 'Game'})
-             [['Game', 'Opponent', rk_col, 'Spread', 'Win Prob', 'Win Prob Raw', 'Opp Name', 'Neutral', 'Away']]
-             .rename(columns={rk_col: 'Rk.'})
+             [['Game', 'Opponent', rk_col, 'Spread', 'Win Prob', 'Win Prob Raw',
+               'Opp Name', 'Neutral', 'Away',
+               game_score_col, opp_score_col]]   # 👈 add scores
+             .rename(columns={rk_col: 'Rk.',
+                              game_score_col: 'Game Score',
+                              opp_score_col:  'Opponent Score'})
              .reset_index(drop=True)
-        )
-        return out
-    
+        ) 
     
     sched_df = _team_schedule_df(selected_team)
     
@@ -880,6 +884,8 @@ if tab_choice == "📊 Team Dashboards":
     .schedule-table a.sched-link:hover {
       text-decoration: underline;
     }
+    .wp-result { font-size: 11px; line-height: 1.1; margin-top: 2px; }
+    .wp-score  { font-size: 10px; opacity: .85; }
     </style>
     """, unsafe_allow_html=True)
     
@@ -895,18 +901,38 @@ if tab_choice == "📊 Team Dashboards":
             df["Game"] = df["Game"].astype("int64")
     
         if "Win Prob" in df.columns:
+            # normalize to % if needed (you already do this)
             wp = df["Win Prob"].astype(float)
             df["Win Prob"] = (wp * 100) if wp.max() <= 1.0 else wp
-    
-            def _wp_cell(x):
-                pct = f"{x:.1f}%"
-                return (
-                    f'<div class="wp-cell">'
-                    f'<div class="wp-pct">{pct}</div>'
-                    f'<div class="wp-track"><div class="wp-fill" style="width:{x:.1f}%"></div></div>'
-                    f'</div>'
-                )
-            df["Win Prob"] = df["Win Prob"].map(_wp_cell)
+        
+            def _wp_cell_row(row):
+                x = float(row["Win Prob"])
+                pct_html = f'<div class="wp-pct">{x:.1f}%</div>'
+                bar_html = f'<div class="wp-track"><div class="wp-fill" style="width:{x:.1f}%"></div></div>'
+        
+                # Detect “🟢 WIN / 🔴 LOSS” from your Spread column (already computed earlier)
+                spread_txt = str(row.get("Spread", "")).upper()
+                show_score = ("WIN" in spread_txt) or ("LOSS" in spread_txt)
+        
+                extra_html = ""
+                if show_score:
+                    # Pull scores: Game Score (selected team) and Opponent Score (opponent)
+                    gs = row.get("Game Score", "")
+                    os = row.get("Opponent Score", "")
+                    # only show if both are present numbers
+                    try:
+                        gs_i = int(float(gs))
+                        os_i = int(float(os))
+                        # Keep the original emoji coloring from Spread column
+                        badge = "🟢 WIN" if "WIN" in spread_txt else ("🔴 LOSS" if "LOSS" in spread_txt else "")
+                        extra_html = f'<div class="wp-result">{badge}<br><span class="wp-score">{gs_i} - {os_i}</span></div>'
+                    except:
+                        pass
+        
+                return f'<div class="wp-cell">{pct_html}{bar_html}{extra_html}</div>'
+        
+            df["Win Prob"] = df.apply(_wp_cell_row, axis=1)
+
     
         if "Spread" in df.columns:
             df["Spread"] = df["Spread"].astype(str)
