@@ -867,6 +867,13 @@ if tab_choice == "📊 Team Dashboards":
     sched_df = _team_schedule_df(selected_team)
     
     st.markdown("#### Schedule")
+    st.markdown(
+        "<div style='font-size:11px; color:#555; margin-top:-4px; margin-bottom:8px;'>"
+        "Click an opponent to view matchup details"
+        "</div>",
+        unsafe_allow_html=True
+    )
+    
     
     # ---------- CSS (compact text, blue headers, pill progress bars) ----------
     st.markdown("""
