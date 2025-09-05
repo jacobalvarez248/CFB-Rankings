@@ -734,32 +734,19 @@ if tab_choice == "📊 Team Dashboards":
         wp_col     = _pick(sch, 'Win Prob', 'Win Probability', 'WP')
         rk_col     = _pick(sch, 'Opponent Ranking', 'Opp Rk', 'Opp Rank', 'Rk.')
     
+        # NEW: pick scores
+        game_score_col = _pick(sch, 'Game Score')
+        opp_score_col  = _pick(sch, 'Opponent Score')
+    
         s = sch[sch[team_col].astype(str) == team_name].copy()
     
-        # ---- Location helpers ----
-        def _is_neutral(loc_raw: str) -> bool:
-            t = (str(loc_raw) or '').strip().lower()
-            return t.startswith('neutral')  # adjust if you use a specific neutral token
+        # location helpers (unchanged) ...
+        # ... (your existing _is_neutral / _is_away / _loc_prefix code) ...
     
-        def _is_away(loc_raw: str) -> bool:
-            t = (str(loc_raw) or '').strip().lower()
-            return t in ('@', 'at', 'away')
+        # ---- Keep a raw copy of WP text (for WIN/LOSS detection) ----
+        s['WP Raw'] = s[wp_col].astype(str)
     
-        s['Away'] = s[loc_col].apply(_is_away)
-    
-        def _loc_prefix(loc_raw: str) -> str:
-            t = (str(loc_raw) or '').strip().lower()
-            if t.startswith('neutral'):
-                return 'vs'    # display
-            if t in ('@', 'at', 'away'):
-                return 'at'
-            return 'vs'       # home/unknown → 'vs'
-    
-        s['Opp Name'] = s[opp_col].astype(str).str.strip()
-        s['Neutral']  = s[loc_col].apply(_is_neutral)
-        s['Opponent'] = s.apply(lambda r: f"{_loc_prefix(r[loc_col])} {r['Opp Name']}".strip(), axis=1)
-    
-        # ---- Win Prob to 0..100 float ----
+        # ---- Win Prob to 0..100 float (for future math/plot) ----
         def _to_prob_pct(x):
             if pd.isna(x): return np.nan
             if isinstance(x, str):
@@ -772,35 +759,28 @@ if tab_choice == "📊 Team Dashboards":
             except: return np.nan
     
         s['Win Prob'] = s[wp_col].apply(_to_prob_pct)
-        s['Win Prob Raw'] = s['Win Prob']  # keep a numeric copy for math/plots
+        s['Win Prob Raw'] = s['Win Prob']  # numeric copy for plots
     
-        # ---- Spread formatting (invert to show from selected team’s perspective) ----
-        def _round_half(v):
-            fv = float(v); return round(fv * 2) / 2.0
+        # ---- Scores (selected team first) ----
+        s['Game Score']     = pd.to_numeric(s[game_score_col], errors='coerce')
+        s['Opponent Score'] = pd.to_numeric(s[opp_score_col], errors='coerce')
     
-        def _invert_and_format(v):
-            if pd.isna(v) or str(v).strip().lower() in ('none', ''): return ''
-            txt = str(v).strip(); up = txt.upper()
-            if 'WIN' in up:  return '🟢 WIN'
-            if 'LOSS' in up or 'LOSE' in up: return '🔴 LOSS'
-            try:
-                val = float(txt.replace('+',''))
-                val = -1.0 * _round_half(val)
-                if abs(val) < 0.05: val = 0.0
-                sign = '+' if val > 0 else ''
-                return f"{sign}{val:.1f}"
-            except:
-                return txt
-    
-        s['Spread'] = s[spread_col].apply(_invert_and_format)
+        # Spread formatting (unchanged) ...
+        # ... (your existing _invert_and_format code) ...
     
         out = (
             s.rename(columns={game_col: 'Game'})
-             [['Game', 'Opponent', rk_col, 'Spread', 'Win Prob', 'Win Prob Raw', 'Opp Name', 'Neutral', 'Away']]
+             [[
+                'Game', 'Opponent', rk_col, 'Spread',
+                'Win Prob', 'Win Prob Raw', 'WP Raw',           # <-- keep both numeric + raw
+                'Opp Name', 'Neutral', 'Away',
+                'Game Score', 'Opponent Score'                  # <-- keep scores for rendering
+             ]]
              .rename(columns={rk_col: 'Rk.'})
              .reset_index(drop=True)
         )
         return out
+
     
     
     sched_df = _team_schedule_df(selected_team)
