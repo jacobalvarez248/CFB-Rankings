@@ -1180,8 +1180,8 @@ if tab_choice == "📊 Team Dashboards":
         
         table.team-metrics th:nth-child(3),
         table.team-metrics td:nth-child(3) {  /* Defense */
-          width: 100px !important;
-          min-width: 90px !important;
+          width: 80px !important;
+          min-width: 70px !important;
           text-align: center !important;
           font-weight: normal !important;
         }
