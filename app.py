@@ -1203,7 +1203,9 @@ if tab_choice == "📊 Team Dashboards":
         styled_sum = styled_sum.background_gradient(
             cmap=BLUE_CMAP, subset=["Defense"], gmap=goodness_map["Defense"]
         )
-        
+        # render the Team Metrics table (right after the two background_gradient calls)
+        st.markdown(styled_sum.to_html(escape=False), unsafe_allow_html=True)
+
         # ===== Projected Conference Standings =====
         st.markdown("#### Projected Conference Standings")
         
