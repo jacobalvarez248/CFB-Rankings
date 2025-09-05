@@ -956,40 +956,23 @@ if tab_choice == "📊 Team Dashboards":
             df["Game"] = df["Game"].astype("int64")
     
         if "Win Prob" in df.columns:
-            wp = pd.to_numeric(df["Win Prob"], errors="coerce")
-            df["Win Prob"] = (wp * 100) if wp.max(skipna=True) is not None and wp.max() <= 1.0 else wp
+            # normalize to percent if the column is 0..1
+            wp_num = pd.to_numeric(df["Win Prob"], errors="coerce")
+            finite = wp_num.replace([np.inf, -np.inf], np.nan).dropna()
+            if not finite.empty and finite.max() <= 1.0:
+                wp_num = wp_num * 100.0
         
-            def _wp_cell_simple(val):
-                try:
-                    x = float(val)
-                except:
+            def _wp_cell(x):
+                if pd.isna(x):
                     return ""
-                pct_html = f'<div class="wp-pct">{x:.1f}%</div>'
-                bar_html = f'<div class="wp-track"><div class="wp-fill" style="width:{x:.1f}%"></div></div>'
-                return f'<div class="wp-cell">{pct_html}{bar_html}</div>'
+                return (
+                    f'<div class="wp-cell">'
+                    f'<div class="wp-pct">{x:.1f}%</div>'
+                    f'<div class="wp-track"><div class="wp-fill" style="width:{x:.1f}%"></div></div>'
+                    f'</div>'
+                )
         
-            df["Win Prob"] = df["Win Prob"].map(_wp_cell_simple)
-           
-            if "Win Prob" in df.columns:
-                # Normalize to percent only if values are 0..1
-                wp_num = pd.to_numeric(df["Win Prob"], errors="coerce")
-            
-                finite = wp_num.replace([np.inf, -np.inf], np.nan).dropna()
-                if not finite.empty and finite.max() <= 1.0:
-                    wp_num = wp_num * 100.0
-            
-                def _wp_cell_simple(val):
-                    if pd.isna(val):
-                        return ""
-                    try:
-                        x = float(val)
-                    except:
-                        return ""
-                    pct_html = f'<div class="wp-pct">{x:.1f}%</div>'
-                    bar_html = f'<div class="wp-track"><div class="wp-fill" style="width:{x:.1f}%"></div></div>'
-                    return f'<div class="wp-cell">{pct_html}{bar_html}</div>'
-            
-                df["Win Prob"] = wp_num.map(_wp_cell_simple)
+            df["Win Prob"] = wp_num.map(_wp_cell)
 
         if "Spread" in df.columns:
             df["Spread"] = df["Spread"].astype(str)
