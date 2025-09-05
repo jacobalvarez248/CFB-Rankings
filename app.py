@@ -658,22 +658,57 @@ if tab_choice == "📊 Team Dashboards":
     @st.cache_data
     def _team_basics():
         exp = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Expected Wins', header=1)
+        exp.columns = [str(c).strip() for c in exp.columns]
         logos = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Logos', header=1)[['Team','Image URL']]
-        # Compute ranks (Power/Off high=good; Def low=good)
+    
+        # Flexible column picker (returns None if not found)
+        def _pick(df, *cands):
+            lower = {c.lower(): c for c in df.columns}
+            for c in cands:
+                if c.lower() in lower:
+                    return lower[c.lower()]
+            return None
+    
+        team_col = _pick(exp, 'Team', 'Team Name')
+        pwr_col  = _pick(exp, 'Power Rating')
+        off_col  = _pick(exp, 'Offensive Rating')
+        def_col  = _pick(exp, 'Defensive Rating')
+        cw_col   = _pick(exp, 'Current Wins', 'Wins')
+        cl_col   = _pick(exp, 'Current Losses', 'Losses')
+    
+        # NEW: conference columns (robust to naming)
+        ccw_col  = _pick(exp, 'Current Conference Wins', 'Current Conf Wins', 'Conf Wins')
+        ccl_col  = _pick(exp, 'Current Conference Losses', 'Current Conf Losses', 'Conf Losses')
+        pcw_col  = _pick(exp, 'Projected Conference Wins', 'Proj Conf W', 'Proj. Conf W')
+        pcl_col  = _pick(exp, 'Projected Conference Losses', 'Proj Conf L', 'Proj. Conf L')
+    
+        cols = [team_col, pwr_col, off_col, def_col, cw_col, cl_col]
+        for optional in (ccw_col, ccl_col, pcw_col, pcl_col):
+            if optional: cols.append(optional)
+    
+        exp = exp[cols].copy()
+    
+        # Canonical names so downstream code is simple
+        rename_map = {
+            team_col: 'Team',
+            pwr_col:  'Power Rating',
+            off_col:  'Offensive Rating',
+            def_col:  'Defensive Rating',
+            cw_col:   'Current Wins',
+            cl_col:   'Current Losses',
+        }
+        if ccw_col: rename_map[ccw_col] = 'Curr Conf W'
+        if ccl_col: rename_map[ccl_col] = 'Curr Conf L'
+        if pcw_col: rename_map[pcw_col] = 'Proj Conf W'
+        if pcl_col: rename_map[pcl_col] = 'Proj Conf L'
+        exp.rename(columns=rename_map, inplace=True)
+    
+        # Ranks (power/off high=good; def low=good)
         exp['Pwr Rank'] = exp['Power Rating'].rank(ascending=False, method='min').astype(int)
         exp['Off Rank'] = exp['Offensive Rating'].rank(ascending=False, method='min').astype(int)
         exp['Def Rank'] = exp['Defensive Rating'].rank(ascending=True,  method='min').astype(int)
-
-        # Keep only what we need
-        keep = [
-            'Team','Power Rating','Offensive Rating','Defensive Rating',
-            'Pwr Rank','Off Rank','Def Rank',
-            'Current Wins','Current Losses',
-            'Projected Overall Wins','Projected Overall Losses'
-        ]
-        exp = exp[keep].copy()
-        exp = exp.merge(logos, on='Team', how='left')
-        exp.set_index('Team', inplace=True)
+    
+        exp = exp.merge(logos, on='Team', how='left').set_index('Team')
         return exp
 
     basics = _team_basics()
@@ -687,29 +722,50 @@ if tab_choice == "📊 Team Dashboards":
 
     row = basics.loc[selected_team]
 
-    # Pretty strings
-    record_txt = f"{int(row['Current Wins'])}-{int(row['Current Losses'])}"
-    exp_record_txt = f"{row['Projected Overall Wins']:.1f}-{row['Projected Overall Losses']:.1f}"
-
+    # Overall records
+    record_txt     = f"{int(row['Current Wins'])}-{int(row['Current Losses'])}"
+    exp_record_txt = f"{row['Projected Overall Wins']:.1f}-{row['Projected Overall Losses']:.1f}" if 'Projected Overall Wins' in row.index and 'Projected Overall Losses' in row.index else "—"
+    
+    # NEW: conference records (gracefully handle missing columns)
+    conf_record_txt = (
+        f"{int(row['Curr Conf W'])}-{int(row['Curr Conf L'])}"
+        if {'Curr Conf W','Curr Conf L'}.issubset(row.index) and pd.notna(row['Curr Conf W']) and pd.notna(row['Curr Conf L'])
+        else "—"
+    )
+    exp_conf_record_txt = (
+        f"{row['Proj Conf W']:.1f}-{row['Proj Conf L']:.1f}"
+        if {'Proj Conf W','Proj Conf L'}.issubset(row.index) and pd.notna(row['Proj Conf W']) and pd.notna(row['Proj Conf L'])
+        else "—"
+    )
+    
     logo_url = row.get('Image URL', '') or ''
+    
+    # Slightly larger logo block to balance the extra line
     team_name_html = f"""
     <div style="display:flex;align-items:center;gap:12px;">
-        <div style="flex:0 0 56px;height:56px;border:1px solid #ddd;border-radius:6px;
-                    display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fff;">
-            {'<img src="'+logo_url+'" style="max-width:100%;max-height:100%;">' if logo_url else ''}
+      <div style="flex:0 0 64px;height:64px;border:1px solid #ddd;border-radius:6px;
+                  display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fff;">
+        {'<img src="'+logo_url+'" style="max-width:100%;max-height:100%;">' if logo_url else ''}
+      </div>
+      <div style="line-height:1.15;">
+        <div style="font-size:18px;font-weight:700;">{selected_team}</div>
+        <div style="font-size:12px;color:#333;">
+          Rank: {row['Pwr Rank']} &nbsp;&nbsp; Off Rank: {row['Off Rank']} &nbsp;&nbsp; Def Rank: {row['Def Rank']}
         </div>
-        <div style="line-height:1.15;">
-            <div style="font-size:18px;font-weight:700;">{selected_team}</div>
-            <div style="font-size:12px;color:#333;">
-                Rank: {row['Pwr Rank']} &nbsp;&nbsp; Off Rank: {row['Off Rank']} &nbsp;&nbsp; Def Rank: {row['Def Rank']}
-            </div>
-            <div style="font-size:12px;color:#333;">Record: {record_txt}</div>
-            <div style="font-size:12px;color:#333;">Expected Record: {exp_record_txt}</div>
+        <div style="font-size:12px;color:#333;">
+          Record: {record_txt} &nbsp;&nbsp; <span title="Conference Record">Conf:</span> {conf_record_txt}
         </div>
+        <div style="font-size:12px;color:#333;">
+          Expected Record: {exp_record_txt}
+        </div>
+        <div style="font-size:12px;color:#333;">
+          Expected Conference Record: {exp_conf_record_txt}
+        </div>
+      </div>
     </div>
     """
-
     st.markdown(team_name_html, unsafe_allow_html=True)
+
 
     # (Optional) faint divider
     st.markdown("<hr style='opacity:.2;'>", unsafe_allow_html=True)
