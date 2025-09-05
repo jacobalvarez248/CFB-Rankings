@@ -717,71 +717,96 @@ if tab_choice == "📊 Team Dashboards":
     # -------------------------- Team Schedule (no scroll, blue headers, neutral→vs) --------------------------
     @st.cache_data
     def _team_schedule_df(team_name: str):
+        import pandas as pd
+        import numpy as np
+    
         sch = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Schedule', header=0)
         sch.columns = [str(c).strip() for c in sch.columns]
     
-        def _pick(df, *cands):
+        # Required picker (hard fail if missing)
+        def pick(df, *cands):
             lower = {c.lower(): c for c in df.columns}
             for c in cands:
-                if c.lower() in lower: return lower[c.lower()]
+                if c.lower() in lower:
+                    return lower[c.lower()]
             raise KeyError(f"Missing expected column; looked for {cands}")
     
-        team_col   = _pick(sch, 'Team', 'Team Name')
-        game_col   = _pick(sch, 'Game')
-        loc_col    = _pick(sch, 'Location', 'Loc')
-        opp_col    = _pick(sch, 'Opponent', 'Opp')
-        spread_col = _pick(sch, 'Spread')
-        wp_col     = _pick(sch, 'Win Prob', 'Win Probability', 'WP')
-        rk_col     = _pick(sch, 'Opponent Ranking', 'Opp Rk', 'Opp Rank', 'Rk.')
+        # Optional picker (returns None if not found)
+        def pick_opt(df, *cands):
+            lower = {c.lower(): c for c in df.columns}
+            for c in cands:
+                if c.lower() in lower:
+                    return lower[c.lower()]
+            return None
     
-        # NEW: pick scores
-        game_score_col = _pick(sch, 'Game Score')
-        opp_score_col  = _pick(sch, 'Opponent Score')
+        team_col   = pick(sch, 'Team', 'Team Name')
+        game_col   = pick(sch, 'Game')
+        opp_col    = pick(sch, 'Opponent', 'Opp')
+    
+        # Optional columns – any of these might not exist in your sheet
+        spread_col = pick_opt(sch, 'Spread')
+        wp_col     = pick(sch, 'Win Prob', 'Win Probability', 'WP')  # we do need this
+        rk_col     = pick_opt(sch, 'Opponent Ranking', 'Opp Rk', 'Opp Rank', 'Rk.', 'Rk')
+        neutral_col = pick_opt(sch, 'Neutral')
+        away_col    = pick_opt(sch, 'Away')
+        opp_name_col = pick_opt(sch, 'Opp Name', 'Opponent Name')
+    
+        # Scores
+        game_score_col = pick(sch, 'Game Score')
+        opp_score_col  = pick(sch, 'Opponent Score')
     
         s = sch[sch[team_col].astype(str) == team_name].copy()
     
-        # location helpers (unchanged) ...
-        # ... (your existing _is_neutral / _is_away / _loc_prefix code) ...
-    
-        # ---- Keep a raw copy of WP text (for WIN/LOSS detection) ----
+        # Keep a raw copy of WP text (for WIN/LOSS detection)
         s['WP Raw'] = s[wp_col].astype(str)
     
-        # ---- Win Prob to 0..100 float (for future math/plot) ----
-        def _to_prob_pct(x):
-            if pd.isna(x): return np.nan
+        # Numeric win prob (for future math/plot)
+        def to_prob_pct(x):
+            if pd.isna(x):
+                return np.nan
             if isinstance(x, str):
                 xs = x.strip().replace('%', '')
                 try:
-                    v = float(xs); return v if v > 1 else v * 100.0
-                except: return np.nan
+                    v = float(xs)
+                    return v if v > 1 else v * 100.0
+                except:
+                    return np.nan
             try:
-                v = float(x); return v if v > 1 else v * 100.0
-            except: return np.nan
+                v = float(x)
+                return v if v > 1 else v * 100.0
+            except:
+                return np.nan
     
-        s['Win Prob'] = s[wp_col].apply(_to_prob_pct)
+        s['Win Prob'] = s[wp_col].apply(to_prob_pct)
         s['Win Prob Raw'] = s['Win Prob']  # numeric copy for plots
     
-        # ---- Scores (selected team first) ----
+        # Scores (selected team first)
         s['Game Score']     = pd.to_numeric(s[game_score_col], errors='coerce')
         s['Opponent Score'] = pd.to_numeric(s[opp_score_col], errors='coerce')
     
-        # Spread formatting (unchanged) ...
-        # ... (your existing _invert_and_format code) ...
+        # Build a rename map for what we actually found
+        rename_map = {game_col: 'Game', opp_col: 'Opponent'}
+        if rk_col:     rename_map[rk_col] = 'Rk.'
+        if spread_col: rename_map[spread_col] = 'Spread'
+        if opp_name_col: rename_map[opp_name_col] = 'Opp Name'
+        if neutral_col:  rename_map[neutral_col] = 'Neutral'
+        if away_col:     rename_map[away_col] = 'Away'
     
-        out = (
-            s.rename(columns={game_col: 'Game'})
-             [[
-                'Game', 'Opponent', rk_col, 'Spread',
-                'Win Prob', 'Win Prob Raw', 'WP Raw',           # <-- keep both numeric + raw
-                'Opp Name', 'Neutral', 'Away',
-                'Game Score', 'Opponent Score'                  # <-- keep scores for rendering
-             ]]
-             .rename(columns={rk_col: 'Rk.'})
-             .reset_index(drop=True)
-        )
+        s = s.rename(columns=rename_map)
+    
+        # Start with the columns we *know* exist now
+        cols = ['Game', 'Opponent', 'Win Prob', 'Win Prob Raw', 'WP Raw', 'Game Score', 'Opponent Score']
+    
+        # Add optional display columns if they exist after rename
+        for c in ['Rk.', 'Spread', 'Opp Name', 'Neutral', 'Away']:
+            if c in s.columns:
+                cols.insert(2, c)  # put them near the front (after Game/Opponent)
+    
+        # Keep only the columns that truly exist (avoid KeyError)
+        cols = [c for c in cols if c in s.columns]
+    
+        out = s[cols].reset_index(drop=True)
         return out
-
-    
     
     sched_df = _team_schedule_df(selected_team)
     
