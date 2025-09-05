@@ -802,11 +802,30 @@ if tab_choice == "📊 Team Dashboards":
         def _round_half(v):
             fv = float(v); return round(fv * 2) / 2.0
     
-        def _invert_and_format(v):
-            if pd.isna(v) or str(v).strip().lower() in ('none', ''): return ''
-            txt = str(v).strip(); up = txt.upper()
-            if 'WIN' in up:   return '🟢 WIN'
-            if 'LOSS' in up or 'LOSE' in up: return '🔴 LOSS'
+        def _invert_and_format(row_val, game_score, opp_score):
+            if pd.isna(row_val) or str(row_val).strip().lower() in ('none', ''):
+                return ''
+            txt = str(row_val).strip(); up = txt.upper()
+        
+            badge = ""
+            if 'WIN' in up:
+                badge = "🟢 WIN"
+            elif 'LOSS' in up or 'LOSE' in up:
+                badge = "🔴 LOSS"
+        
+            score_html = ""
+            if badge and pd.notna(game_score) and pd.notna(opp_score):
+                try:
+                    gs_i = int(float(game_score))
+                    os_i = int(float(opp_score))
+                    score_html = f'<br><span style="font-size:11px;opacity:.85;">{gs_i} - {os_i}</span>'
+                except:
+                    pass
+        
+            if badge:
+                return f"{badge}{score_html}"
+        
+            # Otherwise fall back to numeric inversion
             try:
                 val = float(txt.replace('+',''))
                 val = -1.0 * _round_half(val)
@@ -815,8 +834,15 @@ if tab_choice == "📊 Team Dashboards":
                 return f"{sign}{val:.1f}"
             except:
                 return txt
-    
-        s['Spread'] = s[spread_col].apply(_invert_and_format)
+        
+        # Apply row-wise so we can grab both score cols
+        s['Spread'] = s.apply(
+            lambda r: _invert_and_format(r[spread_col],
+                                         r.get(game_score_col),
+                                         r.get(opp_score_col)),
+            axis=1
+        )
+
     
         # ----- Assemble output columns (only those that exist) -----
         cols = ['Game', 'Opponent', 'Spread', 'Win Prob', 'Win Prob Raw', 'Opp Name', 'Neutral', 'Away']
