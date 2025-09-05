@@ -941,8 +941,6 @@ if tab_choice == "📊 Team Dashboards":
     .schedule-table a.sched-link:hover {
       text-decoration: underline;
     }
-    .wp-result { font-size: 11px; line-height: 1.1; margin-top: 2px; }
-    .wp-score  { font-size: 10px; opacity: .85; }
     </style>
     """, unsafe_allow_html=True)
     
@@ -958,10 +956,21 @@ if tab_choice == "📊 Team Dashboards":
             df["Game"] = df["Game"].astype("int64")
     
         if "Win Prob" in df.columns:
-            # normalize to % if needed (you already do this)
-            wp = df["Win Prob"].astype(float)
-            df["Win Prob"] = (wp * 100) if wp.max() <= 1.0 else wp
+            wp = pd.to_numeric(df["Win Prob"], errors="coerce")
+            df["Win Prob"] = (wp * 100) if wp.max(skipna=True) is not None and wp.max() <= 1.0 else wp
         
+            def _wp_cell_simple(val):
+                try:
+                    x = float(val)
+                except:
+                    return ""
+                pct_html = f'<div class="wp-pct">{x:.1f}%</div>'
+                bar_html = f'<div class="wp-track"><div class="wp-fill" style="width:{x:.1f}%"></div></div>'
+                return f'<div class="wp-cell">{pct_html}{bar_html}</div>'
+        
+            df["Win Prob"] = df["Win Prob"].map(_wp_cell_simple)
+        
+                
             def _wp_cell_row(row):
                 x = float(row["Win Prob"])
                 pct_html = f'<div class="wp-pct">{x:.1f}%</div>'
