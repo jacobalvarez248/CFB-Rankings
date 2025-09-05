@@ -1152,19 +1152,21 @@ if tab_choice == "📊 Team Dashboards":
         
         styled_sum = (
             summary[["Metric", "Offense", "Defense"]]
-            .style.hide(axis="index")
-            .set_table_attributes('class="schedule-table"')  # reuses your blue headers
-            # Cell-wise gradient: each cell compared to its own metric across all teams
-            .background_gradient(
-                cmap=BLUE_CMAP,
-                subset=["Offense", "Defense"],
-                gmap=goodness_map
-            )
+              .style
+              .hide(axis="index")
+              .set_table_attributes('class="schedule-table"')  # keeps your blue headers CSS
+        )
+        
+        # Apply per-column gradients so shapes always align
+        styled_sum = styled_sum.background_gradient(
+            cmap=BLUE_CMAP, subset=["Offense"], gmap=goodness_map["Offense"]
+        )
+        styled_sum = styled_sum.background_gradient(
+            cmap=BLUE_CMAP, subset=["Defense"], gmap=goodness_map["Defense"]
         )
         
         st.markdown(styled_sum.to_html(escape=False), unsafe_allow_html=True)
-
-
+        
 # ----------------------------------------------------- COMPARISON TAB ------------------------------------------------
 if tab_choice == "🤝 Comparison":
     st.markdown("## 🤝 Comparison")
