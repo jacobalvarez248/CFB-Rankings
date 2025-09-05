@@ -1187,6 +1187,13 @@ if tab_choice == "📊 Team Dashboards":
         }
         </style>
         """, unsafe_allow_html=True)
+        st.markdown("""
+        <style>
+          /* right-side breathing room on small screens */
+          .table-pad-right { padding-right: 14px; }
+          @media (min-width: 641px) { .table-pad-right { padding-right: 12px; } }
+        </style>
+        """, unsafe_allow_html=True)
 
 
         # Apply per-column gradients so shapes always align
