@@ -841,7 +841,7 @@ if tab_choice == "📊 Team Dashboards":
           Rank: {row['Pwr Rank']} &nbsp;&nbsp; Off Rank: {row['Off Rank']} &nbsp;&nbsp; Def Rank: {row['Def Rank']}
         </div>
         <div style="font-size:12px;color:#333;">
-          Record: {record_txt} &nbsp;&nbsp; Conf: {conf_record_txt}
+          Record: {record_txt} &nbsp;&nbsp; Conference Record: {conf_record_txt}
         </div>
         <div style="font-size:12px;color:#333;">
           Expected Record: {exp_record_txt}
