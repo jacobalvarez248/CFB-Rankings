@@ -659,67 +659,146 @@ if tab_choice == "📊 Team Dashboards":
     def _team_basics():
         exp = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Expected Wins', header=1)
         exp.columns = [str(c).strip() for c in exp.columns]
-        logos = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Logos', header=1)[['Team','Image URL']]
     
-        # case-insensitive exact match helper
         def _pick(df, *cands):
             lower = {c.lower(): c for c in df.columns}
             for c in cands:
-                if c and c.lower() in lower:
+                if c.lower() in lower:
                     return lower[c.lower()]
-            return None
+            raise KeyError(f"Missing expected column; looked for {cands}")
     
+        # core columns
         team_col = _pick(exp, 'Team', 'Team Name')
-    
+        conf_col = _pick(exp, 'Conference', 'Conf', 'Conf Name')
         pwr_col  = _pick(exp, 'Power Rating')
         off_col  = _pick(exp, 'Offensive Rating')
         def_col  = _pick(exp, 'Defensive Rating')
-    
         cw_col   = _pick(exp, 'Current Wins', 'Wins', 'W')
         cl_col   = _pick(exp, 'Current Losses', 'Losses', 'L')
+        pow_col  = _pick(exp, 'Projected Overall Wins', 'Projected Wins', 'Proj W')
+        pol_col  = _pick(exp, 'Projected Overall Losses', 'Projected Losses', 'Proj L')
     
-        # current conference record (many possible labels)
-        ccw_col  = _pick(exp, 'Current Conference Wins', 'Current Conf Wins', 'Conf Wins', 'Conference Wins')
-        ccl_col  = _pick(exp, 'Current Conference Losses', 'Current Conf Losses', 'Conf Losses', 'Conference Losses')
+        # projected conference W/L (optional but we want them if present)
+        try:
+            pcw_col = _pick(exp, 'Projected Conference Wins', 'Proj Conf W', 'Proj. Conf W')
+            pcl_col = _pick(exp, 'Projected Conference Losses', 'Proj Conf L', 'Proj. Conf L')
+            keep_conf_proj = [pcw_col, pcl_col]
+        except KeyError:
+            pcw_col = pcl_col = None
+            keep_conf_proj = []
     
-        # projected overall record
-        pow_col  = _pick(exp, 'Projected Overall Wins', 'Proj Overall Wins', 'Projected Wins', 'Proj W')
-        pol_col  = _pick(exp, 'Projected Overall Losses', 'Proj Overall Losses', 'Projected Losses', 'Proj L')
+        keep = [team_col, conf_col, pwr_col, off_col, def_col, cw_col, cl_col, pow_col, pol_col] + keep_conf_proj
+        exp = exp[keep].copy()
     
-        # projected conference record
-        pcw_col  = _pick(exp, 'Projected Conference Wins', 'Proj Conf W', 'Proj. Conf W')
-        pcl_col  = _pick(exp, 'Projected Conference Losses', 'Proj Conf L', 'Proj. Conf L')
-    
-        cols = [team_col, pwr_col, off_col, def_col, cw_col, cl_col,
-                ccw_col, ccl_col, pow_col, pol_col, pcw_col, pcl_col]
-        cols = [c for c in cols if c]  # keep only found
-        exp = exp[cols].copy()
-    
-        # canonical names
+        # rename to stable names used below
         rename = {
             team_col: 'Team',
+            conf_col: 'Conf Name',
             pwr_col:  'Power Rating',
             off_col:  'Offensive Rating',
             def_col:  'Defensive Rating',
             cw_col:   'Current Wins',
             cl_col:   'Current Losses',
+            pow_col:  'Projected Overall Wins',
+            pol_col:  'Projected Overall Losses',
         }
-        if ccw_col: rename[ccw_col] = 'Curr Conf W'
-        if ccl_col: rename[ccl_col] = 'Curr Conf L'
-        if pow_col: rename[pow_col] = 'Projected Overall Wins'
-        if pol_col: rename[pol_col] = 'Projected Overall Losses'
-        if pcw_col: rename[pcw_col] = 'Proj Conf W'
-        if pcl_col: rename[pcl_col] = 'Proj Conf L'
-    
+        if pcw_col and pcl_col:
+            rename.update({pcw_col: 'Proj Conf W', pcl_col: 'Proj Conf L'})
         exp.rename(columns=rename, inplace=True)
     
-        # ranks (power/off high=good; def low=good)
+        # ranks
         exp['Pwr Rank'] = exp['Power Rating'].rank(ascending=False, method='min').astype(int)
         exp['Off Rank'] = exp['Offensive Rating'].rank(ascending=False, method='min').astype(int)
         exp['Def Rank'] = exp['Defensive Rating'].rank(ascending=True,  method='min').astype(int)
     
-        exp = exp.merge(logos, on='Team', how='left').set_index('Team')
+        # attach logos
+        logos = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Logos', header=1)[['Team','Image URL']]
+        exp = exp.merge(logos, left_on='Team', right_on='Team', how='left').set_index('Team')
+    
+        # coerce numeric
+        for c in ['Current Wins','Current Losses','Projected Overall Wins','Projected Overall Losses','Proj Conf W','Proj Conf L']:
+            if c in exp.columns:
+                exp[c] = pd.to_numeric(exp[c], errors='coerce')
+    
         return exp
+   
+    @st.cache_data
+    def current_conf_record(team_name: str):
+        """
+        Returns (wins, losses) for *finished* conference games for `team_name`,
+        inferred from Schedule (scores) and Conference map from Expected Wins.
+        """
+        # Build team -> conference map
+        exp = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Expected Wins', header=1)
+        exp.columns = [str(c).strip() for c in exp.columns]
+        def _pick(df, *cands):
+            lower = {c.lower(): c for c in df.columns}
+            for c in cands:
+                if c.lower() in lower:
+                    return lower[c.lower()]
+            raise KeyError(f"Missing expected column; looked for {cands}")
+    
+        team_col_exp = _pick(exp, 'Team', 'Team Name')
+        conf_col_exp = _pick(exp, 'Conference', 'Conf', 'Conf Name')
+    
+        conf_map = (
+            exp[[team_col_exp, conf_col_exp]]
+            .dropna()
+            .assign(**{
+                team_col_exp: lambda d: d[team_col_exp].astype(str).str.strip().str.casefold(),
+                conf_col_exp: lambda d: d[conf_col_exp].astype(str).str.strip().str.casefold(),
+            })
+            .set_index(team_col_exp)[conf_col_exp]
+            .to_dict()
+        )
+        tkey = str(team_name).strip().casefold()
+        team_conf = conf_map.get(tkey)
+        if not team_conf:
+            return None, None  # conference unknown
+    
+        # Read schedule for the team
+        sch = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Schedule', header=0)
+        sch.columns = [str(c).strip() for c in sch.columns]
+        team_col_s  = _pick(sch, 'Team', 'Team Name')
+        opp_col     = _pick(sch, 'Opponent', 'Opp')
+        gs_col      = None
+        os_col      = None
+        for c in ('Game Score','GameScore'):
+            if c in sch.columns: gs_col = c; break
+        for c in ('Opponent Score','OpponentScore'):
+            if c in sch.columns: os_col = c; break
+    
+        s = sch.loc[sch[team_col_s].astype(str).str.strip().str.casefold() == tkey].copy()
+        if s.empty:
+            return 0, 0
+    
+        # Opponent name (strip any leading "at"/"vs"/"@" just in case)
+        def _clean_opp(x: str) -> str:
+            x = str(x or '').strip()
+            for pref in ('vs ', 'at ', '@ '):
+                if x.lower().startswith(pref):
+                    return x[len(pref):].strip()
+            return x
+        s['Opp Name'] = s[opp_col].map(_clean_opp)
+    
+        # Opponent conference
+        s['opp_conf'] = s['Opp Name'].astype(str).str.strip().str.casefold().map(conf_map)
+    
+        # conference games only
+        conf_mask = s['opp_conf'] == team_conf
+    
+        # finished = both scores present and numeric
+        if gs_col and os_col:
+            gs = pd.to_numeric(s[gs_col], errors='coerce')
+            os = pd.to_numeric(s[os_col], errors='coerce')
+            finished = gs.notna() & os.notna()
+            conf_finished = conf_mask & finished
+            wins = int((gs > os)[conf_finished].sum())
+            losses = int((gs < os)[conf_finished].sum())
+            return wins, losses
+    
+        # fallback: no score columns found
+        return None, None
 
 
     basics = _team_basics()
