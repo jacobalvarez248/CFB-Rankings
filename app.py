@@ -1156,7 +1156,34 @@ if tab_choice == "📊 Team Dashboards":
               .hide(axis="index")
               .set_table_attributes('class="schedule-table"')  # keeps your blue headers CSS
         )
+        st.markdown("""
+        <style>
+        .schedule-table th:nth-child(1),
+        .schedule-table td:nth-child(1) {  /* Metric */
+            width: 220px;
+            min-width: 200px;
+            text-align: left !important;
+            font-weight: 600;   /* bold */
+        }
         
+        .schedule-table th:nth-child(2),
+        .schedule-table td:nth-child(2) {  /* Offense */
+            width: 80px;
+            min-width: 70px;
+            text-align: center !important;
+            font-weight: normal;
+        }
+        
+        .schedule-table th:nth-child(3),
+        .schedule-table td:nth-child(3) {  /* Defense */
+            width: 100px;
+            min-width: 90px;
+            text-align: center !important;
+            font-weight: normal;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
         # Apply per-column gradients so shapes always align
         styled_sum = styled_sum.background_gradient(
             cmap=BLUE_CMAP, subset=["Offense"], gmap=goodness_map["Offense"]
