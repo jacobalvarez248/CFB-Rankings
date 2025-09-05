@@ -812,34 +812,26 @@ if tab_choice == "📊 Team Dashboards":
 
     row = basics.loc[selected_team]
 
-    # Overall records
+    # Overall record
     record_txt = f"{int(row['Current Wins'])}-{int(row['Current Losses'])}"
     
-    exp_record_txt = (
-        f"{row['Projected Overall Wins']:.1f}-{row['Projected Overall Losses']:.1f}"
-        if {'Projected Overall Wins','Projected Overall Losses'}.issubset(row.index)
-           and pd.notna(row['Projected Overall Wins']) and pd.notna(row['Projected Overall Losses'])
-        else "—"
-    )
+    # Expected overall record (keep your original)
+    exp_record_txt = f"{row['Projected Overall Wins']:.1f}-{row['Projected Overall Losses']:.1f}"
     
-    # Conference records (graceful fallbacks)
-    conf_record_txt = (
-        f"{int(row['Curr Conf W'])}-{int(row['Curr Conf L'])}"
-        if {'Curr Conf W','Curr Conf L'}.issubset(row.index)
-           and pd.notna(row['Curr Conf W']) and pd.notna(row['Curr Conf L'])
-        else "—"
-    )
-    exp_conf_record_txt = (
-        f"{row['Proj Conf W']:.1f}-{row['Proj Conf L']:.1f}"
-        if {'Proj Conf W','Proj Conf L'}.issubset(row.index)
-           and pd.notna(row['Proj Conf W']) and pd.notna(row['Proj Conf L'])
-        else "—"
-    )
+    # Current conference record (computed)
+    ccw, ccl = current_conf_record(selected_team)
+    conf_record_txt = f"{ccw}-{ccl}" if (ccw is not None and ccl is not None) else "—"
+    
+    # Expected conference record (from Expected Wins, if present)
+    if {'Proj Conf W','Proj Conf L'}.issubset(row.index):
+        exp_conf_txt = f"{row['Proj Conf W']:.1f}-{row['Proj Conf L']:.1f}"
+    else:
+        exp_conf_txt = "—"
     
     logo_url = row.get('Image URL', '') or ''
     team_name_html = f"""
     <div style="display:flex;align-items:center;gap:12px;">
-      <div style="flex:0 0 64px;height:64px;border:1px solid #ddd;border-radius:6px;
+      <div style="flex:0 0 68px;height:68px;border:1px solid #ddd;border-radius:6px;
                   display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fff;">
         {'<img src="'+logo_url+'" style="max-width:100%;max-height:100%;">' if logo_url else ''}
       </div>
@@ -849,18 +841,19 @@ if tab_choice == "📊 Team Dashboards":
           Rank: {row['Pwr Rank']} &nbsp;&nbsp; Off Rank: {row['Off Rank']} &nbsp;&nbsp; Def Rank: {row['Def Rank']}
         </div>
         <div style="font-size:12px;color:#333;">
-          Record: {record_txt} &nbsp;&nbsp; <span title="Conference Record">Conf:</span> {conf_record_txt}
+          Record: {record_txt} &nbsp;&nbsp; Conf: {conf_record_txt}
         </div>
         <div style="font-size:12px;color:#333;">
           Expected Record: {exp_record_txt}
         </div>
         <div style="font-size:12px;color:#333;">
-          Expected Conference Record: {exp_conf_record_txt}
+          Expected Conference Record: {exp_conf_txt}
         </div>
       </div>
     </div>
     """
     st.markdown(team_name_html, unsafe_allow_html=True)
+
 
     # (Optional) faint divider
     st.markdown("<hr style='opacity:.2;'>", unsafe_allow_html=True)
