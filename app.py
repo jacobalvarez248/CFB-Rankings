@@ -734,24 +734,30 @@ if tab_choice == "📊 Team Dashboards":
     row = basics.loc[selected_team]
 
     # Overall records
-    record_txt     = f"{int(row['Current Wins'])}-{int(row['Current Losses'])}"
-    exp_record_txt = f"{row['Projected Overall Wins']:.1f}-{row['Projected Overall Losses']:.1f}" if 'Projected Overall Wins' in row.index and 'Projected Overall Losses' in row.index else "—"
+    record_txt = f"{int(row['Current Wins'])}-{int(row['Current Losses'])}"
     
-    # NEW: conference records (gracefully handle missing columns)
+    exp_record_txt = (
+        f"{row['Projected Overall Wins']:.1f}-{row['Projected Overall Losses']:.1f}"
+        if {'Projected Overall Wins','Projected Overall Losses'}.issubset(row.index)
+           and pd.notna(row['Projected Overall Wins']) and pd.notna(row['Projected Overall Losses'])
+        else "—"
+    )
+    
+    # Conference records (graceful fallbacks)
     conf_record_txt = (
         f"{int(row['Curr Conf W'])}-{int(row['Curr Conf L'])}"
-        if {'Curr Conf W','Curr Conf L'}.issubset(row.index) and pd.notna(row['Curr Conf W']) and pd.notna(row['Curr Conf L'])
+        if {'Curr Conf W','Curr Conf L'}.issubset(row.index)
+           and pd.notna(row['Curr Conf W']) and pd.notna(row['Curr Conf L'])
         else "—"
     )
     exp_conf_record_txt = (
         f"{row['Proj Conf W']:.1f}-{row['Proj Conf L']:.1f}"
-        if {'Proj Conf W','Proj Conf L'}.issubset(row.index) and pd.notna(row['Proj Conf W']) and pd.notna(row['Proj Conf L'])
+        if {'Proj Conf W','Proj Conf L'}.issubset(row.index)
+           and pd.notna(row['Proj Conf W']) and pd.notna(row['Proj Conf L'])
         else "—"
     )
     
     logo_url = row.get('Image URL', '') or ''
-    
-    # Slightly larger logo block to balance the extra line
     team_name_html = f"""
     <div style="display:flex;align-items:center;gap:12px;">
       <div style="flex:0 0 64px;height:64px;border:1px solid #ddd;border-radius:6px;
@@ -776,7 +782,6 @@ if tab_choice == "📊 Team Dashboards":
     </div>
     """
     st.markdown(team_name_html, unsafe_allow_html=True)
-
 
     # (Optional) faint divider
     st.markdown("<hr style='opacity:.2;'>", unsafe_allow_html=True)
