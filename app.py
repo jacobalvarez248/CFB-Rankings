@@ -661,35 +661,42 @@ if tab_choice == "📊 Team Dashboards":
         exp.columns = [str(c).strip() for c in exp.columns]
         logos = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Logos', header=1)[['Team','Image URL']]
     
-        # Flexible column picker (returns None if not found)
+        # case-insensitive exact match helper
         def _pick(df, *cands):
             lower = {c.lower(): c for c in df.columns}
             for c in cands:
-                if c.lower() in lower:
+                if c and c.lower() in lower:
                     return lower[c.lower()]
             return None
     
         team_col = _pick(exp, 'Team', 'Team Name')
+    
         pwr_col  = _pick(exp, 'Power Rating')
         off_col  = _pick(exp, 'Offensive Rating')
         def_col  = _pick(exp, 'Defensive Rating')
-        cw_col   = _pick(exp, 'Current Wins', 'Wins')
-        cl_col   = _pick(exp, 'Current Losses', 'Losses')
     
-        # NEW: conference columns (robust to naming)
-        ccw_col  = _pick(exp, 'Current Conference Wins', 'Current Conf Wins', 'Conf Wins')
-        ccl_col  = _pick(exp, 'Current Conference Losses', 'Current Conf Losses', 'Conf Losses')
+        cw_col   = _pick(exp, 'Current Wins', 'Wins', 'W')
+        cl_col   = _pick(exp, 'Current Losses', 'Losses', 'L')
+    
+        # current conference record (many possible labels)
+        ccw_col  = _pick(exp, 'Current Conference Wins', 'Current Conf Wins', 'Conf Wins', 'Conference Wins')
+        ccl_col  = _pick(exp, 'Current Conference Losses', 'Current Conf Losses', 'Conf Losses', 'Conference Losses')
+    
+        # projected overall record
+        pow_col  = _pick(exp, 'Projected Overall Wins', 'Proj Overall Wins', 'Projected Wins', 'Proj W')
+        pol_col  = _pick(exp, 'Projected Overall Losses', 'Proj Overall Losses', 'Projected Losses', 'Proj L')
+    
+        # projected conference record
         pcw_col  = _pick(exp, 'Projected Conference Wins', 'Proj Conf W', 'Proj. Conf W')
         pcl_col  = _pick(exp, 'Projected Conference Losses', 'Proj Conf L', 'Proj. Conf L')
     
-        cols = [team_col, pwr_col, off_col, def_col, cw_col, cl_col]
-        for optional in (ccw_col, ccl_col, pcw_col, pcl_col):
-            if optional: cols.append(optional)
-    
+        cols = [team_col, pwr_col, off_col, def_col, cw_col, cl_col,
+                ccw_col, ccl_col, pow_col, pol_col, pcw_col, pcl_col]
+        cols = [c for c in cols if c]  # keep only found
         exp = exp[cols].copy()
     
-        # Canonical names so downstream code is simple
-        rename_map = {
+        # canonical names
+        rename = {
             team_col: 'Team',
             pwr_col:  'Power Rating',
             off_col:  'Offensive Rating',
@@ -697,19 +704,23 @@ if tab_choice == "📊 Team Dashboards":
             cw_col:   'Current Wins',
             cl_col:   'Current Losses',
         }
-        if ccw_col: rename_map[ccw_col] = 'Curr Conf W'
-        if ccl_col: rename_map[ccl_col] = 'Curr Conf L'
-        if pcw_col: rename_map[pcw_col] = 'Proj Conf W'
-        if pcl_col: rename_map[pcl_col] = 'Proj Conf L'
-        exp.rename(columns=rename_map, inplace=True)
+        if ccw_col: rename[ccw_col] = 'Curr Conf W'
+        if ccl_col: rename[ccl_col] = 'Curr Conf L'
+        if pow_col: rename[pow_col] = 'Projected Overall Wins'
+        if pol_col: rename[pol_col] = 'Projected Overall Losses'
+        if pcw_col: rename[pcw_col] = 'Proj Conf W'
+        if pcl_col: rename[pcl_col] = 'Proj Conf L'
     
-        # Ranks (power/off high=good; def low=good)
+        exp.rename(columns=rename, inplace=True)
+    
+        # ranks (power/off high=good; def low=good)
         exp['Pwr Rank'] = exp['Power Rating'].rank(ascending=False, method='min').astype(int)
         exp['Off Rank'] = exp['Offensive Rating'].rank(ascending=False, method='min').astype(int)
         exp['Def Rank'] = exp['Defensive Rating'].rank(ascending=True,  method='min').astype(int)
     
         exp = exp.merge(logos, on='Team', how='left').set_index('Team')
         return exp
+
 
     basics = _team_basics()
 
