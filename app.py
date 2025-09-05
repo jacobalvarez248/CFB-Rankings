@@ -1045,6 +1045,115 @@ if tab_choice == "📊 Team Dashboards":
         else:
             st.info("No numeric win probabilities available for this team.")
 
+        # ===== Team metrics: Value / Rank table =====
+        st.markdown("#### Team Metrics")
+        view_mode = st.selectbox("Display", ["Rank", "Value"], index=0, key="td_metric_view")
+    
+        # Metric definition (labels + Metrics sheet columns)
+        METRIC_ROWS = [
+            ("Yards/Game",        "Off. Yds/Game",          "Def. Yds/Game"),
+            ("Pass Yards/Game",   "Off. Pass Yds/Game",     "Def. Pass Yds/Game"),
+            ("Rush Yards/Game",   "Off. Rush Yds/Game",     "Def. Rush Yds/Game"),
+            ("Points/Game",       "Off. Points/Game",       "Def. Points/Game"),
+            ("Yards/Play",        "Off. Yds/Play",          "Def. Yds/Play"),
+            ("Pass Yards/Play",   "Off. Pass Yds/Play",     "Def. Pass Yds/Play"),
+            ("Rush Yards/Play",   "Off. Rush Yds/Play",     "Def. Rush Yds/Play"),
+            ("Points/Play",       "Off. Points/Play",       "Def. Points/Play"),
+            ("EPA/Play",          "Off. EPA/Play",          "Def. EPA/Play"),
+            ("Pass EPA/Play",     "Off. Pass EPA/Play",     "Def. Pass EPA/Play"),
+            ("Rush EPA/Play",     "Off. Rush EPA/Play",     "Def. Rush EPA/Play"),
+            ("Pts/Scoring Opp.",  "Off. Points/Scoring Opp.","Def. Points/Scoring Opp."),
+            ("Success Rate",      "Off. Success Rate",      "Def. Success Rate"),
+            ("Pass Success Rate", "Off. Pass Success Rate", "Def. Pass Success Rate"),
+            ("Rush Success Rate", "Off. Rush Success Rate", "Def. Rush Success Rate"),
+            ("Explosiveness",     "Off. Explosiveness",     "Def. Explosiveness"),
+            ("Pass Explosiveness","Off. Pass Explosivenes", "Def. Pass Explosivenes"),
+            ("Rush Explosiveness","Off. Rush Explosiveness","Def. Rush Explosiveness"),
+        ]
+    
+        mdf = metrics_df.copy()
+        mdf.columns = mdf.columns.str.strip()
+    
+        # Helpers
+        def _rank(col, higher_is_better: bool):
+            if col not in mdf.columns:
+                return None
+            return mdf[col].rank(ascending=not higher_is_better, method="min").astype("Int64")
+    
+        def _fmt_value(col_name: str, v):
+            if pd.isna(v):
+                return ""
+            # percent-style for success rate; others 1 decimal
+            if "Success Rate" in col_name and "Explosiveness" not in col_name:
+                return f"{float(v):.1%}"
+            return f"{float(v):.1f}"
+    
+        def _goodness(values: pd.Series, higher_is_better: bool):
+            vals = pd.to_numeric(values, errors="coerce")
+            if not higher_is_better:
+                vals = vals.max() - vals
+            vmin, vmax = float(vals.min(skipna=True)), float(vals.max(skipna=True))
+            rng = (vmax - vmin) or 1.0
+            return (vals - vmin) / rng  # 0..1
+    
+        # Build table rows + goodness for gradient
+        rows = []
+        off_good_list, def_good_list = [], []
+    
+        for label, off_col, def_col in METRIC_ROWS:
+            if off_col not in mdf.columns or def_col not in mdf.columns:
+                continue
+    
+            # Pull selected-team values
+            row_sel = mdf.loc[mdf["Team"] == selected_team]
+            off_val = pd.to_numeric(row_sel[off_col], errors="coerce").squeeze() if not row_sel.empty else np.nan
+            def_val = pd.to_numeric(row_sel[def_col], errors="coerce").squeeze() if not row_sel.empty else np.nan
+    
+            if view_mode == "Value":
+                off_txt = _fmt_value(off_col, off_val)
+                def_txt = _fmt_value(def_col, def_val)
+                # Goodness: offense higher→better; defense lower→better
+                off_good = _goodness(mdf[off_col], True).loc[row_sel.index].squeeze() if off_col in mdf else np.nan
+                def_good = _goodness(mdf[def_col], False).loc[row_sel.index].squeeze() if def_col in mdf else np.nan
+            else:  # Rank
+                off_r = _rank(off_col, True)
+                def_r = _rank(def_col, False)
+                off_txt = "" if off_r is None or row_sel.empty else f"{int(off_r.loc[row_sel.index].squeeze())}"
+                def_txt = "" if def_r is None or row_sel.empty else f"{int(def_r.loc[row_sel.index].squeeze())}"
+                # Goodness: lower rank is better
+                # Normalize so rank 1 ≈ best (near 1.0)
+                if off_r is not None and not row_sel.empty:
+                    off_good = (off_r.max() - off_r).astype(float) / max(float(off_r.max()-1), 1.0)
+                    off_good = off_good.loc[row_sel.index].squeeze()
+                else:
+                    off_good = np.nan
+                if def_r is not None and not row_sel.empty:
+                    def_good = (def_r.max() - def_r).astype(float) / max(float(def_r.max()-1), 1.0)
+                    def_good = def_good.loc[row_sel.index].squeeze()
+                else:
+                    def_good = np.nan
+    
+            rows.append((label, off_txt, def_txt))
+            off_good_list.append(off_good)
+            def_good_list.append(def_good)
+    
+        summary = pd.DataFrame(rows, columns=["Metric", "Offense", "Defense"])
+        # attach goodness vectors for styling (aligned by row)
+        summary["_off_good"] = off_good_list
+        summary["_def_good"] = def_good_list
+    
+        # Style: same blue headers, “blue is better”
+        BLUE_CMAP = "Blues"
+    
+        styled_sum = (
+            summary[["Metric", "Offense", "Defense"]]
+            .style.hide(axis="index")
+            .set_table_attributes('class="schedule-table"')  # reuse your blue-header CSS
+            .background_gradient(cmap=BLUE_CMAP, subset=["Offense"], gmap=summary["_off_good"])
+            .background_gradient(cmap=BLUE_CMAP, subset=["Defense"], gmap=summary["_def_good"])
+        )
+    
+        st.markdown(styled_sum.to_html(escape=False), unsafe_allow_html=True)
 
 # ----------------------------------------------------- COMPARISON TAB ------------------------------------------------
 if tab_choice == "🤝 Comparison":
