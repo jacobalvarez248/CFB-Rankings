@@ -716,102 +716,96 @@ if tab_choice == "📊 Team Dashboards":
 
     # -------------------------- Team Schedule (no scroll, blue headers, neutral→vs) --------------------------
     @st.cache_data
-    def _safe_pick(df, *names):
-        for n in names:
-            if n in df.columns:
-                return n
-        return None  # don't explode if not found
-        
-    def _team_schedule_df(team_name: str):
+    def _team_schedule_df(team_name: str) -> pd.DataFrame:
+        # Load + normalize headers
         sch = pd.read_excel('CFB Rankings Upload.xlsm', sheet_name='Schedule', header=0)
         sch.columns = [str(c).strip() for c in sch.columns]
     
         def _pick(df, *cands):
             lower = {c.lower(): c for c in df.columns}
             for c in cands:
-                if c.lower() in lower: return lower[c.lower()]
+                if c.lower() in lower:
+                    return lower[c.lower()]
             raise KeyError(f"Missing expected column; looked for {cands}")
     
+        # Use _safe_pick for optional columns
+        def _safe_pick(df, *cands):
+            lower = {c.lower(): c for c in df.columns}
+            for c in cands:
+                if c.lower() in lower:
+                    return lower[c.lower()]
+            return None
+    
+        # Required columns
         team_col   = _pick(sch, 'Team', 'Team Name')
         game_col   = _pick(sch, 'Game')
         loc_col    = _pick(sch, 'Location', 'Loc')
         opp_col    = _pick(sch, 'Opponent', 'Opp')
         spread_col = _pick(sch, 'Spread')
         wp_col     = _pick(sch, 'Win Prob', 'Win Probability', 'WP')
-        rk_col     = _pick(sch, 'Opponent Ranking', 'Opp Rk', 'Opp Rank', 'Rk.')
-        game_score_col = _safe_pick(s, 'Game Score', 'GameScore')
-        opp_score_col  = _safe_pick(s, 'Opponent Score', 'OpponentScore')
-        base_cols = ['Game', 'Opponent', rk_col, 'Spread', 'Win Prob', 'Win Prob Raw',
-                 'Opp Name', 'Neutral', 'Away']
-        # keep only those that actually exist
-        base_cols = [c for c in base_cols if c in s.columns]
     
-        cols = base_cols.copy()
-        renames = {rk_col: 'Rk.'} if rk_col in s.columns else {}
+        # Optional columns
+        rk_col          = _safe_pick(sch, 'Opponent Ranking', 'Opp Rk', 'Opp Rank', 'Rk.')
+        game_score_col  = _safe_pick(sch, 'Game Score', 'GameScore')
+        opp_score_col   = _safe_pick(sch, 'Opponent Score', 'OpponentScore')
     
-        if game_score_col:
-            cols.append(game_score_col)
-            renames[game_score_col] = 'Game Score'
-        if opp_score_col:
-            cols.append(opp_score_col)
-            renames[opp_score_col] = 'Opponent Score'
+        # Filter to the selected team
+        s = sch.loc[sch[team_col].astype(str).str.strip() == str(team_name).strip()].copy()
+        if s.empty:
+            # Always return a DataFrame (so .empty is valid at call site)
+            cols = ['Game','Opponent','Spread','Win Prob','Win Prob Raw','Opp Name','Neutral','Away']
+            if rk_col: cols.insert(2, 'Rk.')
+            if game_score_col: cols.append('Game Score')
+            if opp_score_col:  cols.append('Opponent Score')
+            return pd.DataFrame(columns=cols)
     
-        out = (s.rename(columns={game_col: 'Game'})[cols]
-                 .rename(columns=renames)
-                 .reset_index(drop=True))
-    
-        # Always return a DataFrame
-        if not isinstance(out, pd.DataFrame):
-            out = pd.DataFrame(columns=['Game','Opponent','Rk.','Spread','Win Prob','Win Prob Raw',
-                                        'Opp Name','Neutral','Away','Game Score','Opponent Score'])
-        return out
-    
-        # ---- Location helpers ----
+        # ----- Location / opponent name helpers -----
         def _is_neutral(loc_raw: str) -> bool:
             t = (str(loc_raw) or '').strip().lower()
-            return t.startswith('neutral')  # adjust if you use a specific neutral token
+            return t.startswith('neutral')
     
         def _is_away(loc_raw: str) -> bool:
             t = (str(loc_raw) or '').strip().lower()
             return t in ('@', 'at', 'away')
     
-        s['Away'] = s[loc_col].apply(_is_away)
-    
         def _loc_prefix(loc_raw: str) -> str:
             t = (str(loc_raw) or '').strip().lower()
             if t.startswith('neutral'):
-                return 'vs'    # display
+                return 'vs'
             if t in ('@', 'at', 'away'):
                 return 'at'
-            return 'vs'       # home/unknown → 'vs'
+            return 'vs'
     
         s['Opp Name'] = s[opp_col].astype(str).str.strip()
         s['Neutral']  = s[loc_col].apply(_is_neutral)
+        s['Away']     = s[loc_col].apply(_is_away)
         s['Opponent'] = s.apply(lambda r: f"{_loc_prefix(r[loc_col])} {r['Opp Name']}".strip(), axis=1)
     
-        # ---- Win Prob to 0..100 float ----
+        # ----- Win Prob → % float -----
         def _to_prob_pct(x):
             if pd.isna(x): return np.nan
             if isinstance(x, str):
                 xs = x.strip().replace('%', '')
                 try:
                     v = float(xs); return v if v > 1 else v * 100.0
-                except: return np.nan
+                except:
+                    return np.nan
             try:
                 v = float(x); return v if v > 1 else v * 100.0
-            except: return np.nan
+            except:
+                return np.nan
     
         s['Win Prob'] = s[wp_col].apply(_to_prob_pct)
-        s['Win Prob Raw'] = s['Win Prob']  # keep a numeric copy for math/plots
+        s['Win Prob Raw'] = s['Win Prob']  # numeric copy for downstream math
     
-        # ---- Spread formatting (invert to show from selected team’s perspective) ----
+        # ----- Spread: invert to selected team’s perspective, keep result badges -----
         def _round_half(v):
             fv = float(v); return round(fv * 2) / 2.0
     
         def _invert_and_format(v):
             if pd.isna(v) or str(v).strip().lower() in ('none', ''): return ''
             txt = str(v).strip(); up = txt.upper()
-            if 'WIN' in up:  return '🟢 WIN'
+            if 'WIN' in up:   return '🟢 WIN'
             if 'LOSS' in up or 'LOSE' in up: return '🔴 LOSS'
             try:
                 val = float(txt.replace('+',''))
@@ -824,16 +818,25 @@ if tab_choice == "📊 Team Dashboards":
     
         s['Spread'] = s[spread_col].apply(_invert_and_format)
     
+        # ----- Assemble output columns (only those that exist) -----
+        cols = ['Game', 'Opponent', 'Spread', 'Win Prob', 'Win Prob Raw', 'Opp Name', 'Neutral', 'Away']
+        if rk_col and rk_col in s.columns:
+            cols.insert(2, rk_col)
+        if game_score_col and game_score_col in s.columns:
+            cols.append(game_score_col)
+        if opp_score_col and opp_score_col in s.columns:
+            cols.append(opp_score_col)
+    
         out = (
             s.rename(columns={game_col: 'Game'})
-             [['Game', 'Opponent', rk_col, 'Spread', 'Win Prob', 'Win Prob Raw',
-               'Opp Name', 'Neutral', 'Away',
-               game_score_col, opp_score_col]]   # 👈 add scores
-             .rename(columns={rk_col: 'Rk.',
-                              game_score_col: 'Game Score',
-                              opp_score_col:  'Opponent Score'})
+             [cols]
+             .rename(columns={rk_col: 'Rk.'} if rk_col else {})
+             .rename(columns={game_score_col: 'Game Score'} if game_score_col else {})
+             .rename(columns={opp_score_col: 'Opponent Score'} if opp_score_col else {})
              .reset_index(drop=True)
-        ) 
+        )
+    
+        return out
     
     sched_df = _team_schedule_df(selected_team)
     
