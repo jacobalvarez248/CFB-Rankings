@@ -1138,22 +1138,32 @@ if tab_choice == "📊 Team Dashboards":
             def_good_list.append(def_good)
     
         summary = pd.DataFrame(rows, columns=["Metric", "Offense", "Defense"])
-        # attach goodness vectors for styling (aligned by row)
-        summary["_off_good"] = off_good_list
-        summary["_def_good"] = def_good_list
-    
-        # Style: same blue headers, “blue is better”
+
+        # Build a cell-wise goodness map (0..1 per row per column)
+        goodness_map = pd.DataFrame(
+            {
+                "Offense": off_good_list,   # computed from all teams' Off.<metric> values
+                "Defense": def_good_list,   # computed from all teams' Def.<metric> values
+            },
+            index=summary.index,
+        )
+        
         BLUE_CMAP = "Blues"
-    
+        
         styled_sum = (
             summary[["Metric", "Offense", "Defense"]]
             .style.hide(axis="index")
-            .set_table_attributes('class="schedule-table"')  # reuse your blue-header CSS
-            .background_gradient(cmap=BLUE_CMAP, subset=["Offense"], gmap=summary["_off_good"])
-            .background_gradient(cmap=BLUE_CMAP, subset=["Defense"], gmap=summary["_def_good"])
+            .set_table_attributes('class="schedule-table"')  # reuses your blue headers
+            # Cell-wise gradient: each cell compared to its own metric across all teams
+            .background_gradient(
+                cmap=BLUE_CMAP,
+                subset=["Offense", "Defense"],
+                gmap=goodness_map
+            )
         )
-    
+        
         st.markdown(styled_sum.to_html(escape=False), unsafe_allow_html=True)
+
 
 # ----------------------------------------------------- COMPARISON TAB ------------------------------------------------
 if tab_choice == "🤝 Comparison":
